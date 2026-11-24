@@ -82,7 +82,7 @@ const RIVER := {
 	"step": 14.0,
 	"sample": 3.0,
 	"width": 12.0,
-	"depth": 1.6,
+	"depth": 2.2,
 	"bank": 5.0,
 	"valley": 16.0,
 	"waterfall_drop": 1.1,

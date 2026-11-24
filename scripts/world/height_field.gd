@@ -260,11 +260,11 @@ func apply_pois(layout: PoiLayout) -> void:
 		var sz: Vector2 = p["size"]
 		match String(name):
 			"camp":
-				_flatten(c, sz * 0.42, 7.5, 0.95, 1.5)
+				_flatten(c, sz * 0.42, 7.5, 0.95, 1.5, 14.0)
 			"fields":
 				_flatten(c, sz * 0.45, 9.0, 0.9, 1.1)
 			"ruins":
-				_flatten(c, Vector2(40.0, 36.0), 10.0, 0.92, 2.0)
+				_flatten(c, Vector2(40.0, 36.0), 10.0, 0.92, 2.0, 14.0)
 			"mountain":
 				_plateau(c, 70.0, 26.0, 16.0)
 			"radio_tower":
@@ -275,8 +275,12 @@ func apply_pois(layout: PoiLayout) -> void:
 				var rim := _rim_min(c, sz * 0.5)
 				var lake_y := clampf(rim - 0.8, WorldConfig.SEA_LEVEL + 2.0, 9.0)
 				p["y"] = lake_y
-				_lake_basin(c, sz * 0.5, lake_y, 3.0)
-				_smooth_rect(c, maxf(sz.x, sz.y) * 0.62, 2)
+				_lake_basin(c, sz * 0.5, lake_y, 4.5)
+				var gap_dir := Vector2.RIGHT
+				if layout.pois.has("camp"):
+					gap_dir = (layout.pois["camp"]["center"] as Vector2) - c
+				_lake_rim(c, sz * 0.5, lake_y, gap_dir)
+				_smooth_rect(c, maxf(sz.x, sz.y) * 0.7, 2)
 			"swamp":
 				_swamp_basin(c, sz * 0.5)
 
@@ -313,7 +317,7 @@ func build_biomes() -> void:
 				t = WorldConfig.ZONE_PINE_FOREST if temp < 0.50 else WorldConfig.ZONE_DECIDUOUS_FOREST
 			biome[idx] = t
 
-func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, power: float) -> void:
+func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, power: float, max_above: float = 3.5) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.5
 	var size := radii * 2.0
 	var phase := ShapeUtil.phase_for(center)
@@ -333,7 +337,7 @@ func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, p
 			if f <= 0.0:
 				continue
 			var idx := zi * N + xi
-			if grid[idx] > target + 3.5:
+			if grid[idx] > target + max_above:
 				continue
 			grid[idx] = lerpf(grid[idx], target, f)
 
@@ -382,6 +386,35 @@ func _lake_basin(center: Vector2, radii: Vector2, water_y: float, depth: float) 
 			var target := water_y - depth * (1.0 - 0.45 * clampf(rn, 0.0, 1.0))
 			var idx := zi * N + xi
 			grid[idx] = lerpf(grid[idx], target, infl * 0.96)
+
+func _lake_rim(center: Vector2, radii: Vector2, water_y: float, gap_dir: Vector2) -> void:
+	var size := radii * 2.0
+	var phase := ShapeUtil.phase_for(center)
+	var rmax := maxf(radii.x, radii.y) * 1.9
+	var gap_angle := gap_dir.angle()
+	var j0 := clampi(int(floor((center.y - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
+	var j1 := clampi(int(ceil((center.y + rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
+	var i0 := clampi(int(floor((center.x - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
+	var i1 := clampi(int(ceil((center.x + rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
+	for zi in range(j0, j1 + 1):
+		var wz := -WorldConfig.SIZE * 0.5 + float(zi) * cell
+		for xi in range(i0, i1 + 1):
+			var wx := -WorldConfig.SIZE * 0.5 + float(xi) * cell
+			var rn := ShapeUtil.ellipse_norm(wx, wz, center, size, phase)
+			if rn < 1.0 or rn > 1.9:
+				continue
+			var band := smoothstep(1.0, 1.12, rn) * (1.0 - smoothstep(1.5, 1.9, rn))
+			if band <= 0.0:
+				continue
+			var ang := Vector2(wx - center.x, wz - center.y).angle()
+			var gap := 1.0 - smoothstep(0.18, 0.55, absf(angle_difference(ang, gap_angle)))
+			band *= 1.0 - gap * 0.95
+			if band <= 0.0:
+				continue
+			var target := water_y + 1.3
+			var idx := zi * N + xi
+			if target > grid[idx]:
+				grid[idx] = lerpf(grid[idx], target, band)
 
 func _swamp_basin(center: Vector2, radii: Vector2) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.25

@@ -24,7 +24,7 @@ func build(parent: Node3D, mask: ImageTexture, layout: PoiLayout, river: RiverBu
 	calm_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_build_ocean()
 	_build_lake(layout, hf)
-	_build_river(river)
+	_build_river(river, hf)
 	for w in river.waterfalls:
 		_build_waterfall(w)
 
@@ -93,14 +93,17 @@ func _build_lake(layout: PoiLayout, hf: HeightField) -> void:
 	mi.position = Vector3(c.x, y - 0.05, c.y)
 	_parent.add_child(mi)
 
-func _build_river(river: RiverBuilder) -> void:
+func _build_river(river: RiverBuilder, hf: HeightField) -> void:
 	if river.polyline.size() < 2:
 		return
+	var cols := 4
+	var inner := WorldConfig.RIVER.width * 0.5
+	var outer := inner + WorldConfig.RIVER.bank
+	var offsets := [-outer, -inner, inner, outer]
+	var count := river.polyline.size()
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var indices := PackedInt32Array()
-	var count := river.polyline.size()
-	var half_w := WorldConfig.RIVER.width * 0.5
 	for i in range(count):
 		var p := river.polyline[i]
 		var dir: Vector2
@@ -110,17 +113,23 @@ func _build_river(river: RiverBuilder) -> void:
 			dir = (p - river.polyline[i - 1]).normalized()
 		else:
 			dir = (river.polyline[i + 1] - river.polyline[i - 1]).normalized()
-		var perp := Vector2(-dir.y, dir.x) * half_w
-		var y := river.water_levels[i] - 0.05
-		verts.append(Vector3(p.x - perp.x, y, p.y - perp.y))
-		verts.append(Vector3(p.x + perp.x, y, p.y + perp.y))
-		norms.append(Vector3.UP)
-		norms.append(Vector3.UP)
+		var perp := Vector2(-dir.y, dir.x)
+		var wl := river.water_levels[i] - 0.03
+		for c in range(cols):
+			var off: float = offsets[c]
+			var q := p + perp * off
+			var y := wl
+			if c == 0 or c == cols - 1:
+				y = maxf(hf.sample(q.x, q.y) + 0.02, wl - 1.2)
+			verts.append(Vector3(q.x, y, q.y))
+			norms.append(Vector3.UP)
 	for i in range(count - 1):
 		if _skip_river_quad(river, i):
 			continue
-		var a := i * 2
-		indices.append_array([a, a + 1, a + 2, a + 1, a + 3, a + 2])
+		var a := i * cols
+		var b := (i + 1) * cols
+		for c in range(cols - 1):
+			indices.append_array([a + c, a + c + 1, b + c, a + c + 1, b + c + 1, b + c])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts

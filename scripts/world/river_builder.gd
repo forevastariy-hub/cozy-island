@@ -165,7 +165,7 @@ func _update_bbox() -> void:
 
 func _recompute_water(hf: HeightField, lake_y: float) -> void:
 	water_levels.resize(polyline.size())
-	var wl := lake_y
+	var wl := lake_y - 0.08
 	for i in range(polyline.size()):
 		var p := polyline[i]
 		var h := hf.sample(p.x, p.y)
