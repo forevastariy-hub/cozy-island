@@ -14,11 +14,13 @@ func build(parent: Node3D, mask: ImageTexture, layout: PoiLayout, river: RiverBu
 	material.set_shader_parameter("zone_mask", mask)
 	material.set_shader_parameter("world_size", WorldConfig.SIZE)
 	calm_material = StandardMaterial3D.new()
-	calm_material.albedo_color = Color(0.16, 0.42, 0.47)
-	calm_material.roughness = 0.12
-	calm_material.metallic = 0.15
+	calm_material.albedo_color = Color(0.40, 0.70, 0.72, 0.9)
+	calm_material.roughness = 0.2
+	calm_material.metallic = 0.05
+	calm_material.emission_enabled = true
+	calm_material.emission = Color(0.10, 0.26, 0.28)
+	calm_material.emission_energy_multiplier = 0.8
 	calm_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	calm_material.albedo_color.a = 0.82
 	calm_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_build_ocean()
 	_build_lake(layout)
@@ -48,17 +50,34 @@ func _build_lake(layout: PoiLayout) -> void:
 	var lake: Dictionary = layout.pois["lake"]
 	var c: Vector2 = lake["center"]
 	var sz: Vector2 = lake["size"]
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 1.0
-	cyl.bottom_radius = 1.0
-	cyl.height = 0.08
-	cyl.radial_segments = 48
+	var phase := ShapeUtil.phase_for(c)
+	var segs := 48
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var indices := PackedInt32Array()
+	verts.append(Vector3.ZERO)
+	norms.append(Vector3.UP)
+	for i in range(segs):
+		var a := TAU * float(i) / float(segs)
+		var w := ShapeUtil.wobble(a, phase)
+		verts.append(Vector3(cos(a) * sz.x * 0.49 * w, 0.0, sin(a) * sz.y * 0.49 * w))
+		norms.append(Vector3.UP)
+	for i in range(segs):
+		var i0 := 1 + i
+		var i1 := 1 + (i + 1) % segs
+		indices.append_array([0, i1, i0])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var mi := MeshInstance3D.new()
 	mi.name = "LakeWater"
-	mi.mesh = cyl
+	mi.mesh = mesh
 	mi.material_override = calm_material
 	mi.position = Vector3(c.x, float(lake.get("y", WorldConfig.LAKE_Y)), c.y)
-	mi.scale = Vector3(sz.x * 0.49, 1.0, sz.y * 0.49)
 	_parent.add_child(mi)
 
 func _build_river(river: RiverBuilder) -> void:
@@ -85,6 +104,8 @@ func _build_river(river: RiverBuilder) -> void:
 		norms.append(Vector3.UP)
 		norms.append(Vector3.UP)
 	for i in range(count - 1):
+		if _skip_river_quad(river, i):
+			continue
 		var a := i * 2
 		indices.append_array([a, a + 1, a + 2, a + 1, a + 3, a + 2])
 	var arrays := []
@@ -100,24 +121,41 @@ func _build_river(river: RiverBuilder) -> void:
 	mi.material_override = calm_material
 	_parent.add_child(mi)
 
+func _skip_river_quad(river: RiverBuilder, i: int) -> bool:
+	for s in river.waterfall_spans:
+		var span: Vector2i = s
+		if i >= span.x - 1 and i + 1 <= span.y:
+			return true
+	return false
+
 func _build_waterfall(w: Dictionary) -> void:
 	var top: Vector3 = w["top"]
 	var bottom: Vector3 = w["bottom"]
-	var height := maxf(0.4, top.y - bottom.y)
+	var dir: Vector2 = w["dir"]
 	var width: float = w["width"]
-	var quad := QuadMesh.new()
-	quad.size = Vector2(width, height)
+	var perp := Vector2(-dir.y, dir.x) * width * 0.5
+	var drop_dir := dir * 1.4
+	var tl := top + Vector3(-perp.x, 0.0, -perp.y)
+	var tr := top + Vector3(perp.x, 0.0, perp.y)
+	var bl := bottom + Vector3(-perp.x, 0.0, -perp.y) + Vector3(drop_dir.x, 0.0, drop_dir.y)
+	var br := bottom + Vector3(perp.x, 0.0, perp.y) + Vector3(drop_dir.x, 0.0, drop_dir.y)
+	var verts := PackedVector3Array([tl, tr, bl, br])
+	var norms := PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
+	var indices := PackedInt32Array([0, 2, 1, 1, 2, 3])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.albedo_color = Color(0.82, 0.90, 0.95, 0.62)
-	mat.disable_fog = true
+	mat.albedo_color = Color(0.52, 0.70, 0.82, 0.5)
 	var mi := MeshInstance3D.new()
 	mi.name = "Waterfall"
-	mi.mesh = quad
+	mi.mesh = mesh
 	mi.material_override = mat
-	mi.position = (top + bottom) * 0.5
-	var dir: Vector2 = w["dir"]
-	mi.rotation.y = atan2(dir.x, dir.y)
 	_parent.add_child(mi)

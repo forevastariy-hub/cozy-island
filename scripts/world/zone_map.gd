@@ -4,8 +4,9 @@ extends RefCounted
 # Zone lookup with priorities. One authority for "which biome is here".
 
 var zones: Array = []
+var _hf: HeightField
+
 var _priority := {
-	WorldConfig.ZONE_GENERAL: 0,
 	WorldConfig.ZONE_FIELDS: 6,
 	WorldConfig.ZONE_LAKE: 9,
 	WorldConfig.ZONE_SWAMP: 8,
@@ -18,7 +19,8 @@ var _priority := {
 	WorldConfig.ZONE_DECIDUOUS_FOREST: 5,
 }
 
-func build(layout: PoiLayout) -> void:
+func build(layout: PoiLayout, hf: HeightField) -> void:
+	_hf = hf
 	zones.clear()
 	for name in layout.pois:
 		var p: Dictionary = layout.pois[name]
@@ -44,7 +46,18 @@ func zone_at(x: float, z: float) -> Dictionary:
 		if int(zdef["priority"]) > best_priority:
 			best_priority = int(zdef["priority"])
 			best = zdef
-	return best
+	if not best.is_empty():
+		return best
+	if _hf != null:
+		return {
+			"name": "biome",
+			"center": Vector2(x, z),
+			"size": Vector2(1.0, 1.0),
+			"type": _hf.biome_at(x, z),
+			"priority": 0,
+			"phase": 0.0,
+		}
+	return {}
 
 func type_at(x: float, z: float) -> int:
 	var zdef := zone_at(x, z)

@@ -128,7 +128,7 @@ func _find_bridges(river: RiverBuilder, hf: HeightField) -> void:
 func _has_bridge_near(p: Vector2) -> bool:
 	for br in bridges:
 		var pos: Vector3 = br["pos"]
-		if Vector2(pos.x, pos.z).distance_to(p) < 14.0:
+		if Vector2(pos.x, pos.z).distance_to(p) < 42.0:
 			return true
 	return false
 
@@ -151,7 +151,7 @@ func _ensure_crossings(river: RiverBuilder, hf: HeightField) -> void:
 
 func _bridge_at(p: Vector2, rdir: Vector2, river: RiverBuilder, hf: HeightField) -> Dictionary:
 	var wl := river.water_level_at(p)
-	if wl < WorldConfig.SEA_LEVEL + 0.6:
+	if wl < WorldConfig.SEA_LEVEL + 1.0:
 		return {}
 	if _has_bridge_near(p):
 		return {}

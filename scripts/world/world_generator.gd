@@ -21,9 +21,10 @@ func generate(seed_value: int, parent: Node3D) -> void:
 	coast.build(WorldRng.new(seed_value, "coast"))
 	hf.build_base(seed_value, coast)
 	layout.place(hf, coast, WorldRng.new(seed_value, "poi"))
-	zones.build(layout)
 	hf.apply_pois(layout)
 	river.build(hf, layout, coast, WorldRng.new(seed_value, "river"))
+	hf.build_biomes()
+	zones.build(layout, hf)
 	roads.build(route_points(), hf, layout, river)
 	painter.build(hf, zones, coast, roads)
 	mesh.build(parent, hf, painter)
@@ -43,7 +44,7 @@ func is_water(x: float, z: float) -> bool:
 
 func route_points() -> Array:
 	var out: Array = []
-	var order := ["camp", "ruins", "swamp", "deciduous_forest", "stone_tower", "fields", "radio_tower", "mountain", "lake", "camp"]
+	var order := ["camp", "ruins", "swamp", "stone_tower", "fields", "radio_tower", "mountain", "lake", "camp"]
 	for name in order:
 		if not layout.pois.has(name):
 			continue
@@ -53,9 +54,8 @@ func route_points() -> Array:
 			var camp_c: Vector2 = layout.pois["camp"]["center"]
 			c += (camp_c - c).normalized() * ((p["size"] as Vector2).x * 0.42)
 		out.append(c)
-	for name in ["deciduous_forest", "fields"]:
-		if layout.pois.has(name) and layout.pois.has("camp"):
-			out.append(layout.pois[name]["center"])
+	if layout.pois.has("fields") and layout.pois.has("camp"):
+		out.append(layout.pois["fields"]["center"])
 	if out.size() < 2:
 		out = [Vector2(0.0, 60.0), Vector2(0.0, -60.0)]
 	return out

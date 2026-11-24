@@ -1,15 +1,15 @@
 class_name WorldScatterer
 extends RefCounted
 
-# One placement loop for every species. Rules live in BiomeRules, quotas in
-# WorldConfig, so a new plant or rock is a data change, not new code.
+# One placement loop for every species. Species follow the biome grid (height,
+# moisture, temperature), so forests grow where the climate allows.
 
 var placements: Array = []
 
 func build(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng) -> void:
 	placements.clear()
-	_scatter_trees(hf, zones, painter, layout, river, rng, "pine", int(WorldConfig.SCATTER["pine"]), WorldConfig.ZONE_PINE_FOREST)
-	_scatter_trees(hf, zones, painter, layout, river, rng, "decid", int(WorldConfig.SCATTER["decid"]), WorldConfig.ZONE_DECIDUOUS_FOREST)
+	_scatter_species(hf, zones, painter, layout, river, rng, "pine", int(WorldConfig.SCATTER["pine"]), WorldConfig.ZONE_PINE_FOREST)
+	_scatter_species(hf, zones, painter, layout, river, rng, "decid", int(WorldConfig.SCATTER["decid"]), WorldConfig.ZONE_DECIDUOUS_FOREST)
 	_scatter_rocks(hf, zones, painter, layout, river, rng, int(WorldConfig.SCATTER["rock"]))
 	_scatter_bushes(hf, zones, painter, layout, river, rng, int(WorldConfig.SCATTER["bush"]))
 	_scatter_reeds(hf, zones, painter, layout, river, rng, int(WorldConfig.SCATTER["reed"]))
@@ -44,18 +44,18 @@ func _ctx(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiL
 		"water": water,
 	}
 
-func _scatter_trees(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, kind: String, count: int, zone_type: int) -> void:
-	var def := zones.def_by_type(zone_type)
-	if def.is_empty():
-		return
-	var center: Vector2 = def["center"]
-	var radii: Vector2 = (def["size"] as Vector2) * 0.5
+func _random_land_point(rng: WorldRng) -> Vector2:
+	var a := rng.randf_range(0.0, TAU)
+	var r := rng.randf_range(18.0, 445.0)
+	return Vector2(cos(a), sin(a)) * r
+
+func _scatter_species(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, kind: String, count: int, target_type: int) -> void:
 	var placed := 0
-	for _i in range(count * 10):
+	for _i in range(count * 22):
 		if placed >= count:
 			break
-		var p := rng.random_in_ellipse(center, radii, 0.92)
-		if zones.type_at(p.x, p.y) != zone_type:
+		var p := _random_land_point(rng)
+		if zones.type_at(p.x, p.y) != target_type:
 			continue
 		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.tree_allowed(ctx):
@@ -70,12 +70,10 @@ func _scatter_trees(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, la
 
 func _scatter_rocks(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, count: int) -> void:
 	var placed := 0
-	for _i in range(count * 12):
+	for _i in range(count * 16):
 		if placed >= count:
 			break
-		var a := rng.randf_range(0.0, TAU)
-		var r := rng.randf_range(12.0, 470.0)
-		var p := Vector2(cos(a), sin(a)) * r
+		var p := _random_land_point(rng)
 		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.rock_allowed(ctx):
 			continue
@@ -89,12 +87,10 @@ func _scatter_rocks(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, la
 
 func _scatter_bushes(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, count: int) -> void:
 	var placed := 0
-	for _i in range(count * 12):
+	for _i in range(count * 16):
 		if placed >= count:
 			break
-		var a := rng.randf_range(0.0, TAU)
-		var r := rng.randf_range(30.0, 450.0)
-		var p := Vector2(cos(a), sin(a)) * r
+		var p := _random_land_point(rng)
 		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.bush_allowed(ctx):
 			continue
@@ -107,19 +103,11 @@ func _scatter_bushes(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, l
 		placed += 1
 
 func _scatter_reeds(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, count: int) -> void:
-	var spots: Array = []
-	for zt in [WorldConfig.ZONE_SWAMP, WorldConfig.ZONE_LAKE]:
-		var def := zones.def_by_type(zt)
-		if not def.is_empty():
-			spots.append(def)
-	if spots.is_empty():
-		return
 	var placed := 0
-	for _i in range(count * 14):
+	for _i in range(count * 26):
 		if placed >= count:
 			break
-		var def: Dictionary = spots[rng.randi_range(0, spots.size() - 1)]
-		var p := rng.random_in_ellipse(def["center"], (def["size"] as Vector2) * 0.5, 1.05)
+		var p := _random_land_point(rng)
 		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.reed_allowed(ctx):
 			continue

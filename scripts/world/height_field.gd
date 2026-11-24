@@ -2,27 +2,60 @@ class_name HeightField
 extends RefCounted
 
 # Owns the height grid and exposes only primitives (sample / lower / sculpt).
-# It knows nothing about rivers, roads, colours or meshes.
+# Terrain is built from layered noise: plains, ridged mountain ranges, a wide
+# beach band, a real bathymetry profile and noise-shaped sea islets.
 
 const N := 257
 
 var cell := WorldConfig.SIZE / float(WorldConfig.RES)
 var grid := PackedFloat32Array()
 var mud := PackedFloat32Array()
+var moisture := PackedFloat32Array()
+var temperature := PackedFloat32Array()
+var biome := PackedInt32Array()
+
 var _noise: FastNoiseLite
+var _ridge: FastNoiseLite
+var _islet: FastNoiseLite
 var _rugged: FastNoiseLite
+var _mountain_centers: Array = []
 
 func build_base(world_seed: int, coast: Coastline) -> void:
 	_noise = FastNoiseLite.new()
 	_noise.seed = world_seed
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	_noise.frequency = 0.0085
+	_noise.frequency = 1.0
 	_noise.fractal_octaves = 5
-	_noise.fractal_gain = 0.52
+	_noise.fractal_gain = 0.5
+	_ridge = FastNoiseLite.new()
+	_ridge.seed = world_seed + 31
+	_ridge.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	_ridge.frequency = 1.0
+	_ridge.fractal_octaves = 4
+	_ridge.fractal_gain = 0.5
+	_islet = FastNoiseLite.new()
+	_islet.seed = world_seed + 91
+	_islet.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_islet.frequency = 1.0
+	_islet.fractal_octaves = 4
+	_islet.fractal_gain = 0.55
 	_rugged = FastNoiseLite.new()
 	_rugged.seed = world_seed + 77
 	_rugged.noise_type = FastNoiseLite.TYPE_CELLULAR
 	_rugged.frequency = 0.03
+
+	_mountain_centers.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = world_seed * 7 + 13
+	for _i in range(2):
+		var a := rng.randf_range(0.0, TAU)
+		var r := rng.randf_range(130.0, 240.0)
+		_mountain_centers.append({
+			"c": Vector2(cos(a), sin(a)) * r,
+			"radius": rng.randf_range(80.0, 130.0),
+			"height": rng.randf_range(0.8, 1.0),
+		})
+
 	grid.resize(N * N)
 	mud.resize(N * N)
 	mud.fill(0.0)
@@ -33,32 +66,74 @@ func build_base(world_seed: int, coast: Coastline) -> void:
 			grid[zi * N + xi] = _base_at(x, z, coast)
 
 func _base_at(x: float, z: float, coast: Coastline) -> float:
-	var land := coast.land_mask(x, z)
-	var n1 := _noise.get_noise_2d(x, z) * 0.5 + 0.5
-	var n2 := _noise.get_noise_2d(x * 2.3 + 100.0, z * 2.3 - 55.0) * 0.5 + 0.5
-	var h := 4.5 + n1 * 10.0 + n2 * 3.0
-	h += _hill(x, z, -120.0, -40.0, 90.0, 5.0)
-	h += _hill(x, z, 140.0, 240.0, 130.0, 6.0)
-	h += _hill(x, z, -300.0, 250.0, 110.0, 3.0)
-	var sea := lerpf(WorldConfig.SEABED, h, land)
-	return _islet_height(x, z, coast, sea)
+	var signed := coast.signed_distance(x, z)
+	var inland := _inland_height(x, z, signed)
+	var beach_w := _beach_width(x, z)
+	var shore_t := smoothstep(0.0, 1.0, clampf(signed / beach_w, 0.0, 1.0))
+	var land_h := lerpf(WorldConfig.SEA_LEVEL + 0.7, inland, shore_t)
+	var bathy := _bathy(x, z, signed)
+	var h := lerpf(bathy, land_h, smoothstep(-5.0, 5.0, signed))
+	var isl := _sea_islet(x, z, signed)
+	if isl > -100.0:
+		h = maxf(h, isl)
+	return h
+
+func _inland_height(x: float, z: float, signed: float) -> float:
+	var plains := 3.0 + (_noise.get_noise_2d(x * 0.0035, z * 0.0035) * 0.5 + 0.5) * 7.5
+	var band := _mountain_mask(x, z) * smoothstep(-10.0, 30.0, signed)
+	var ridge := _ridged(x, z)
+	var mountains := pow(ridge, 1.7) * band * 58.0
+	return plains + mountains
+
+func _mountain_mask(x: float, z: float) -> float:
+	var best := 0.0
+	for m in _mountain_centers:
+		var c: Vector2 = m["c"]
+		var radius: float = m["radius"]
+		var d := Vector2(x, z).distance_to(c)
+		var g := exp(-(d * d) / (2.0 * radius * radius))
+		best = maxf(best, g * float(m["height"]))
+	return clampf(pow(best * 1.15, 1.8), 0.0, 1.0)
+
+func _ridged(x: float, z: float) -> float:
+	var v := 0.0
+	var amp := 0.6
+	var f := 0.0045
+	for _i in range(4):
+		var n := 1.0 - absf(_ridge.get_noise_2d(x * f, z * f))
+		v += n * n * amp
+		f *= 2.11
+		amp *= 0.52
+	return clampf(v * 1.45, 0.0, 1.0)
+
+func _beach_width(x: float, z: float) -> float:
+	var m := _mountain_mask(x, z)
+	return lerpf(78.0, 14.0, clampf(m * 1.25, 0.0, 1.0))
+
+func _bathy(x: float, z: float, signed: float) -> float:
+	var d := maxf(0.0, -signed)
+	var depth := 0.8
+	depth += smoothstep(0.0, 45.0, d) * 4.5
+	depth += smoothstep(45.0, 110.0, d) * 10.0
+	depth += smoothstep(110.0, 240.0, d) * 12.0
+	depth += (_islet.get_noise_2d(x * 0.02, z * 0.02) * 0.5 + 0.5) * 1.3
+	return WorldConfig.SEA_LEVEL - depth
+
+func _sea_islet(x: float, z: float, signed: float) -> float:
+	if signed >= 0.0 or signed < -250.0:
+		return -999.0
+	var isl := _islet.get_noise_2d(x * 0.012 + 311.0, z * 0.012 - 177.0)
+	if isl < 0.52:
+		return -999.0
+	var d := -signed
+	var fade := 1.0 - smoothstep(70.0, 250.0, d)
+	var rise := (isl - 0.52) / 0.48
+	return WorldConfig.SEA_LEVEL - 1.3 + rise * 8.0 * fade
 
 func _hill(x: float, z: float, cx: float, cz: float, radius: float, height: float) -> float:
 	var dx := x - cx
 	var dz := z - cz
 	return height * exp(-(dx * dx + dz * dz) / (2.0 * radius * radius))
-
-func _islet_height(x: float, z: float, coast: Coastline, base_h: float) -> float:
-	var out := base_h
-	for it in coast.islets:
-		var c: Vector2 = it["center"]
-		var r: float = it["radius"]
-		var d := Vector2(x, z).distance_to(c)
-		if d > r * 2.4:
-			continue
-		var f := exp(-(d * d) / (2.0 * r * r))
-		out = maxf(out, WorldConfig.SEA_LEVEL - 1.6 + float(it["height"]) * f * 1.9)
-	return out
 
 func sample(x: float, z: float) -> float:
 	var fx := (x + WorldConfig.SIZE * 0.5) / cell
@@ -96,6 +171,11 @@ func node_index(x: float, z: float) -> int:
 
 func mud_at(x: float, z: float) -> float:
 	return mud[node_index(x, z)]
+
+func biome_at(x: float, z: float) -> int:
+	if biome.is_empty():
+		return WorldConfig.ZONE_GENERAL
+	return biome[node_index(x, z)]
 
 func lower_to(x: float, z: float, target: float) -> void:
 	var idx := node_index(x, z)
@@ -177,6 +257,39 @@ func apply_pois(layout: PoiLayout) -> void:
 				_lake_basin(c, sz * 0.5, 8.0, 4.5)
 			"swamp":
 				_swamp_basin(c, sz * 0.5)
+
+func build_biomes() -> void:
+	moisture.resize(N * N)
+	temperature.resize(N * N)
+	biome.resize(N * N)
+	for zi in range(N):
+		var z := -WorldConfig.SIZE * 0.5 + float(zi) * cell
+		for xi in range(N):
+			var x := -WorldConfig.SIZE * 0.5 + float(xi) * cell
+			var idx := zi * N + xi
+			var h := grid[idx]
+			var slope := 0.0
+			if xi > 0 and zi > 0 and xi < N - 1 and zi < N - 1:
+				var n := sample_normal(x, z)
+				slope = rad_to_deg(acos(clampf(n.y, -1.0, 1.0)))
+			var temp := clampf(0.60 - (h - WorldConfig.SEA_LEVEL) * 0.006 + (z / 500.0) * 0.10, 0.0, 1.0)
+			var moist := (_noise.get_noise_2d(x * 0.0035 + 90.0, z * 0.0035 - 40.0) * 0.5 + 0.5) * 0.82
+			moist += (1.0 - clampf(slope / 30.0, 0.0, 1.0)) * 0.14
+			if h < WorldConfig.SEA_LEVEL + 5.0:
+				moist += 0.05
+			moist = clampf(moist, 0.0, 1.0)
+			temperature[idx] = temp
+			moisture[idx] = moist
+			var t := WorldConfig.ZONE_GENERAL
+			if h < WorldConfig.SEA_LEVEL + 0.3:
+				t = WorldConfig.ZONE_LAKE
+			elif slope > 32.0 or h > 36.0:
+				t = WorldConfig.ZONE_MOUNTAIN
+			elif moist > 0.68 and h < WorldConfig.SEA_LEVEL + 4.2:
+				t = WorldConfig.ZONE_SWAMP
+			elif moist > 0.55:
+				t = WorldConfig.ZONE_PINE_FOREST if temp < 0.50 else WorldConfig.ZONE_DECIDUOUS_FOREST
+			biome[idx] = t
 
 func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, power: float) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.5

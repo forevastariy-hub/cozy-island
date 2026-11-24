@@ -1,44 +1,46 @@
 class_name Coastline
 extends RefCounted
 
-# Analytic island contour: radius is a function of the angle, so the land mask
-# costs O(1) per sample. The polygon is only a derived view of the same curve.
+# Noise-driven island outline: bays, peninsulas and a ragged shore instead of
+# a perfect circle. Distances are signed and in metres.
 
-var phase := 0.0
-var islets: Array = []
+var _noise: FastNoiseLite
 
 func build(rng: WorldRng) -> void:
-	phase = rng.randf_range(0.0, TAU)
-	islets.clear()
-	var angles := [-2.45, -2.05, 2.95, 2.55, 0.55, 1.05]
-	for i in angles.size():
-		var a: float = float(angles[i]) + rng.randf_range(-0.08, 0.08)
-		var dist := radius_at(a) + rng.randf_range(38.0, 78.0)
-		islets.append({
-			"center": Vector2(cos(a), sin(a)) * dist,
-			"radius": rng.randf_range(18.0, 32.0),
-			"height": rng.randf_range(4.0, 6.5),
-		})
+	_noise = FastNoiseLite.new()
+	_noise.seed = rng.rng().seed
+	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	_noise.frequency = 1.0
+	_noise.fractal_octaves = 5
+	_noise.fractal_gain = 0.5
 
-func radius_at(a: float) -> float:
-	var wob := 1.0 \
-		+ 0.075 * sin(3.0 * a + phase) \
-		+ 0.045 * sin(5.0 * a + phase * 1.7 + 2.1) \
-		+ 0.030 * sin(7.0 * a - phase * 0.6 + 4.3)
-	var base := WorldConfig.COAST_RADIUS
-	var north := maxf(-sin(a), 0.0)
-	var south := maxf(sin(a), 0.0)
-	base *= 1.0 - 0.07 * north + 0.04 * south
-	return base * wob
+func effective_radius(x: float, z: float) -> float:
+	var n1 := _noise.get_noise_2d(x * 0.0015, z * 0.0015)
+	var n2 := _noise.get_noise_2d(x * 0.0055, z * 0.0055)
+	var n3 := _noise.get_noise_2d(x * 0.016, z * 0.016)
+	var base := 350.0 + n1 * 150.0 + n2 * 58.0 + n3 * 16.0
+	var p := Vector2(x, z)
+	if p.length() > 0.01:
+		var north := maxf(-p.normalized().y, 0.0)
+		base *= 1.0 - 0.06 * north
+	return base
 
 func signed_distance(x: float, z: float) -> float:
-	var p := Vector2(x, z)
-	return radius_at(p.angle()) - p.length()
+	return effective_radius(x, z) - Vector2(x, z).length()
 
-func land_mask(x: float, z: float) -> float:
-	return smoothstep(WorldConfig.COAST_BLEND_IN, WorldConfig.COAST_BLEND_OUT, signed_distance(x, z))
+func radius_at(a: float) -> float:
+	var dir := Vector2(cos(a), sin(a))
+	var lo := 80.0
+	var hi := 560.0
+	for _i in range(24):
+		var mid := (lo + hi) * 0.5
+		if signed_distance(dir.x * mid, dir.y * mid) > 0.0:
+			lo = mid
+		else:
+			hi = mid
+	return lo
 
-func polygon(steps: int = 160) -> PackedVector2Array:
+func polygon(steps: int = 180) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	for i in steps:
 		var a := TAU * float(i) / float(steps)

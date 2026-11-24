@@ -26,7 +26,7 @@ func build(hf: HeightField, zones: ZoneMap, coast: Coastline, roads: RoadBuilder
 	_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_noise.frequency = 0.03
 	_build_path_grid(hf, roads)
-	_build_zone_grids(hf, zones)
+	_build_zone_grids(hf, zones, coast)
 	colors.resize(N * N)
 	for zi in range(N):
 		var z := -WorldConfig.SIZE * 0.5 + float(zi) * hf.cell
@@ -72,7 +72,7 @@ func _stamp_path(p: Vector2, radius: float) -> void:
 			var idx := zi * N + xi
 			path_grid[idx] = maxf(path_grid[idx], v)
 
-func _build_zone_grids(hf: HeightField, zones: ZoneMap) -> void:
+func _build_zone_grids(hf: HeightField, zones: ZoneMap, coast: Coastline) -> void:
 	swamp_grid.resize(N * N)
 	rock_grid.resize(N * N)
 	shore_grid.resize(N * N)
@@ -90,9 +90,13 @@ func _build_zone_grids(hf: HeightField, zones: ZoneMap) -> void:
 				var sz: Vector2 = swamp_def["size"]
 				var phase: float = swamp_def["phase"]
 				swamp = 1.0 - smoothstep(0.70, 1.15, ShapeUtil.ellipse_norm(x, z, c, sz, phase))
-			var rock := smoothstep(26.0, 40.0, slope)
-			rock = maxf(rock, smoothstep(22.0, 34.0, h))
-			var shore := 1.0 - smoothstep(0.0, 1.8, absf(h - (WorldConfig.SEA_LEVEL + 0.5)))
+			var rock := smoothstep(30.0, 44.0, slope)
+			rock = maxf(rock, smoothstep(32.0, 50.0, h))
+			var sd := coast.signed_distance(x, z)
+			var shore := 0.0
+			if sd > -14.0 and sd < 120.0:
+				shore = 1.0 - smoothstep(WorldConfig.SEA_LEVEL, WorldConfig.SEA_LEVEL + 2.8, h)
+			shore *= 1.0 - smoothstep(18.0, 30.0, slope)
 			shore *= 1.0 - rock * 0.6
 			swamp_grid[idx] = swamp
 			rock_grid[idx] = rock
@@ -144,7 +148,7 @@ func _color_for(x: float, z: float, h: float, slope: float, zone_type: int, mudv
 		WorldConfig.ZONE_RUINS:
 			c = c.lerp(Color(0.46, 0.43, 0.37), 0.45)
 		WorldConfig.ZONE_MOUNTAIN:
-			c = c.lerp(Color(0.46, 0.43, 0.37), 0.55)
+			c = c.lerp(Color(0.42, 0.40, 0.35), 0.4)
 		WorldConfig.ZONE_STONE_TOWER:
 			c = c.lerp(Color(0.46, 0.44, 0.39), 0.5)
 		WorldConfig.ZONE_RADIO_TOWER:
@@ -153,8 +157,8 @@ func _color_for(x: float, z: float, h: float, slope: float, zone_type: int, mudv
 			c = Color(0.20, 0.30, 0.28).lerp(Color(0.26, 0.36, 0.30), n)
 	if mudv > 0.05:
 		c = c.lerp(Color(0.35, 0.27, 0.17), clampf(mudv, 0.0, 1.0) * 0.7)
-	var rock_amt := smoothstep(26.0, 40.0, slope)
-	rock_amt = maxf(rock_amt, smoothstep(22.0, 34.0, h) * 0.92)
+	var rock_amt := smoothstep(30.0, 44.0, slope)
+	rock_amt = maxf(rock_amt, smoothstep(32.0, 50.0, h) * 0.85)
 	if rock_amt > 0.01:
 		var rock_col := Color(0.47, 0.44, 0.39).lerp(Color(0.60, 0.55, 0.47), n)
 		c = c.lerp(rock_col, rock_amt)

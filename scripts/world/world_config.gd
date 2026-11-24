@@ -76,23 +76,15 @@ const POI := {
 		"y": -1.2, "type": ZONE_SWAMP,
 		"min": {"camp": 180.0, "mountain": 240.0, "radio_tower": 240.0, "stone_tower": 240.0}
 	},
-	"pine_forest": {
-		"ring": Vector2(180.0, 280.0), "size": Vector2(400.0, 360.0),
-		"y": 12.0, "type": ZONE_PINE_FOREST
-	},
-	"deciduous_forest": {
-		"ring": Vector2(180.0, 280.0), "size": Vector2(430.0, 340.0),
-		"y": 10.0, "type": ZONE_DECIDUOUS_FOREST
-	},
 }
 
 const RIVER := {
 	"step": 14.0,
 	"sample": 3.0,
-	"width": 9.0,
-	"depth": 1.4,
-	"bank": 4.0,
-	"valley": 15.0,
+	"width": 8.0,
+	"depth": 1.3,
+	"bank": 3.5,
+	"valley": 12.0,
 	"waterfall_drop": 1.1,
 	"max_waterfalls": 3
 }

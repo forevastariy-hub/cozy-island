@@ -1,8 +1,9 @@
 class_name PoiLayout
 extends RefCounted
 
-# Places structures and biomes with rejection sampling against one shared
-# constraint table, so no two rules can drift apart.
+# Places structures with rejection sampling against one shared constraint
+# table, so no two rules can drift apart. Forests are not placed here: they
+# are derived from height, moisture and temperature by HeightField.
 
 var pois := {}
 
@@ -12,7 +13,6 @@ func place(hf: HeightField, coast: Coastline, rng: WorldRng) -> void:
 	pois.clear()
 	for name in ORDER:
 		_place_one(String(name), hf, coast, rng)
-	_place_forests(hf, rng)
 
 func _place_one(name: String, hf: HeightField, coast: Coastline, rng: WorldRng) -> void:
 	var cfg: Dictionary = WorldConfig.POI[name]
@@ -61,7 +61,7 @@ func _violates(name: String, cand: Vector2, hf: HeightField, coast: Coastline, r
 
 	if hf.sample(cand.x, cand.y) < WorldConfig.SEA_LEVEL + 1.0:
 		return true
-	if hf.slope_deg(cand.x, cand.y) > 30.0:
+	if hf.slope_deg(cand.x, cand.y) > 32.0:
 		return true
 
 	if cfg.has("coast_max"):
@@ -98,42 +98,6 @@ func _violates(name: String, cand: Vector2, hf: HeightField, coast: Coastline, r
 
 func _angle_gap_deg(a: Vector2, b: Vector2) -> float:
 	return absf(rad_to_deg(angle_difference(a.angle(), b.angle())))
-
-func _place_forests(hf: HeightField, rng: WorldRng) -> void:
-	_add_forest("pine_forest", -2.25, hf, rng, WorldConfig.ZONE_PINE_FOREST, Vector2(400.0, 360.0))
-	_add_forest("deciduous_forest", 1.35, hf, rng, WorldConfig.ZONE_DECIDUOUS_FOREST, Vector2(430.0, 340.0))
-
-func _add_forest(name: String, base_angle: float, hf: HeightField, rng: WorldRng, zone_type: int, size: Vector2) -> void:
-	var best := Vector2.ZERO
-	var best_score := -1.0e9
-	for _attempt in range(80):
-		var a := base_angle + rng.randf_range(-0.55, 0.55)
-		var r := rng.randf_range(180.0, 280.0)
-		var p := Vector2(cos(a), sin(a)) * r
-		if hf.sample(p.x, p.y) < WorldConfig.SEA_LEVEL + 1.5:
-			continue
-		if hf.slope_deg(p.x, p.y) > 22.0:
-			continue
-		var score := -absf(angle_difference(a, base_angle)) * 10.0
-		for other in pois:
-			score += minf(p.distance_to(pois[other]["center"]) - 160.0, 0.0)
-		for f in ["pine_forest", "deciduous_forest"]:
-			if pois.has(f):
-				score += minf(p.distance_to(pois[f]["center"]) - 320.0, 0.0)
-		if score > best_score:
-			best_score = score
-			best = p
-	if best == Vector2.ZERO:
-		best = Vector2(cos(base_angle), sin(base_angle)) * 220.0
-	pois[name] = {
-		"name": name,
-		"center": best,
-		"size": size,
-		"radius": size.x * 0.5,
-		"type": zone_type,
-		"y": 0.0,
-		"plateau_r": 0.0,
-	}
 
 func poi_points() -> Dictionary:
 	var out := {}
