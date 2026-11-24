@@ -4,7 +4,7 @@ extends RefCounted
 # Turns geometry into the shader mask and vertex colours. One palette, one
 # formula per channel, so the minimap can never disagree with the ground.
 
-const N := 257
+const N := 321
 
 var path_grid := PackedFloat32Array()
 var swamp_grid := PackedFloat32Array()

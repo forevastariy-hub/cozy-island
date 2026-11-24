@@ -4,7 +4,7 @@ extends RefCounted
 # Single source of truth for world tuning. No other class stores magic numbers.
 
 const SIZE := 1000.0
-const RES := 256
+const RES := 320
 const SEA_LEVEL := -2.0
 const SEABED := -9.0
 const MAX_HEIGHT := 88.0

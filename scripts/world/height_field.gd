@@ -5,7 +5,7 @@ extends RefCounted
 # Terrain is built from layered noise: plains, ridged mountain ranges, a wide
 # beach band, a real bathymetry profile and noise-shaped sea islets.
 
-const N := 257
+const N := 321
 
 var cell := WorldConfig.SIZE / float(WorldConfig.RES)
 var grid := PackedFloat32Array()
@@ -59,15 +59,15 @@ func _base_at(x: float, z: float, coast: Coastline) -> float:
 		h = maxf(h, isl)
 	return h
 
-func _inland_height(x: float, z: float, _signed: float) -> float:
-	var n := _noise.get_noise_2d(x * 0.0045, z * 0.0045) * 0.5 + 0.5
-	var n2 := _noise.get_noise_2d(x * 0.012 + 50.0, z * 0.012 - 30.0) * 0.5 + 0.5
-	var terraced := _terrace(n, 4.0)
-	var h := 3.0 + terraced * 14.0 + n2 * 3.0
-	return maxf(h, 2.5)
+func _inland_height(x: float, z: float, signed: float) -> float:
+	var n1 := _noise.get_noise_2d(x * 0.0032, z * 0.0032) * 0.5 + 0.5
+	var n2 := _noise.get_noise_2d(x * 0.0075 + 120.0, z * 0.0075 - 40.0) * 0.5 + 0.5
+	var n3 := _noise.get_noise_2d(x * 0.02 - 30.0, z * 0.02 + 80.0) * 0.5 + 0.5
+	var coast_fade := smoothstep(55.0, 165.0, signed)
+	return 2.5 + n3 * 1.2 + (n1 * 12.0 + n2 * 5.0) * coast_fade
 
 func _beach_width(_x: float, _z: float) -> float:
-	return 68.0
+	return 85.0
 
 func _bathy(x: float, z: float, signed: float) -> float:
 	var d := maxf(0.0, -signed)
@@ -354,15 +354,14 @@ func _plateau(center: Vector2, base_r: float, plateau_r: float, target: float) -
 				f = 1.0
 			elif d < base_r:
 				var t := 1.0 - (d - plateau_r) / (base_r - plateau_r)
-				f = _terrace(t, 4)
+				f = smoothstep(0.0, 1.0, t)
 			if f <= 0.0:
 				continue
 			var idx := zi * N + xi
-			grid[idx] = lerpf(grid[idx], target, pow(f, 1.35))
+			grid[idx] = lerpf(grid[idx], target, pow(f, 1.2))
 
-func _terrace(t: float, steps: float) -> float:
-	var x := clampf(t, 0.0, 1.0) * steps
-	return (floor(x) + smoothstep(0.72, 0.98, fmod(x, 1.0))) / steps
+func smooth_global(passes: int) -> void:
+	_smooth_all(passes)
 
 func _lake_basin(center: Vector2, radii: Vector2, water_y: float, depth: float) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.3

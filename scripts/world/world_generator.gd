@@ -22,6 +22,7 @@ func generate(seed_value: int, parent: Node3D) -> void:
 	hf.build_base(seed_value, coast)
 	layout.place(hf, coast, WorldRng.new(seed_value, "poi"))
 	hf.apply_pois(layout)
+	hf.smooth_global(1)
 	river.build(hf, layout, coast, WorldRng.new(seed_value, "river"))
 	hf.raise_inland_lowlands(coast, layout)
 	hf.build_biomes()
@@ -29,7 +30,7 @@ func generate(seed_value: int, parent: Node3D) -> void:
 	roads.build(route_points(), hf, layout, river)
 	painter.build(hf, zones, coast, roads, river)
 	mesh.build(parent, hf, painter)
-	water.build(parent, painter.mask_texture, layout, river)
+	water.build(parent, painter.mask_texture, layout, river, hf)
 	scatter.build(hf, zones, painter, layout, river, WorldRng.new(seed_value, "scatter"))
 
 func is_water(x: float, z: float) -> bool:

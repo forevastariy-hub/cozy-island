@@ -7,7 +7,7 @@ var material: ShaderMaterial
 var calm_material: StandardMaterial3D
 var _parent: Node3D
 
-func build(parent: Node3D, mask: ImageTexture, layout: PoiLayout, river: RiverBuilder) -> void:
+func build(parent: Node3D, mask: ImageTexture, layout: PoiLayout, river: RiverBuilder, hf: HeightField) -> void:
 	_parent = parent
 	material = ShaderMaterial.new()
 	material.shader = WaterShader
@@ -23,7 +23,7 @@ func build(parent: Node3D, mask: ImageTexture, layout: PoiLayout, river: RiverBu
 	calm_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	calm_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_build_ocean()
-	_build_lake(layout)
+	_build_lake(layout, hf)
 	_build_river(river)
 	for w in river.waterfalls:
 		_build_waterfall(w)
@@ -44,14 +44,17 @@ func _build_ocean() -> void:
 	mi.position = Vector3(0.0, WorldConfig.SEA_LEVEL, 0.0)
 	_parent.add_child(mi)
 
-func _build_lake(layout: PoiLayout) -> void:
+func _build_lake(layout: PoiLayout, hf: HeightField) -> void:
 	if not layout.pois.has("lake"):
 		return
 	var lake: Dictionary = layout.pois["lake"]
 	var c: Vector2 = lake["center"]
 	var sz: Vector2 = lake["size"]
+	var y := float(lake.get("y", WorldConfig.LAKE_Y))
 	var phase := ShapeUtil.phase_for(c)
-	var segs := 48
+	var rx := maxf(1.0, sz.x * 0.5)
+	var rz := maxf(1.0, sz.y * 0.5)
+	var segs := 96
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var indices := PackedInt32Array()
@@ -59,8 +62,18 @@ func _build_lake(layout: PoiLayout) -> void:
 	norms.append(Vector3.UP)
 	for i in range(segs):
 		var a := TAU * float(i) / float(segs)
+		var dir := Vector2(cos(a), sin(a))
 		var w := ShapeUtil.wobble(a, phase)
-		verts.append(Vector3(cos(a) * sz.x * 0.45 * w, 0.0, sin(a) * sz.y * 0.45 * w))
+		var limit := w / sqrt(pow(dir.x / rx, 2.0) + pow(dir.y / rz, 2.0)) * 1.02
+		var edge := 0.0
+		for k in range(24):
+			var r := limit * (1.0 - float(k) / 23.0)
+			if hf.sample(c.x + dir.x * r, c.y + dir.y * r) < y - 0.05:
+				edge = r
+				break
+		if edge < 1.0:
+			edge = 1.0
+		verts.append(Vector3(dir.x * edge, 0.0, dir.y * edge))
 		norms.append(Vector3.UP)
 	for i in range(segs):
 		var i0 := 1 + i
@@ -77,7 +90,7 @@ func _build_lake(layout: PoiLayout) -> void:
 	mi.name = "LakeWater"
 	mi.mesh = mesh
 	mi.material_override = calm_material
-	mi.position = Vector3(c.x, float(lake.get("y", WorldConfig.LAKE_Y)), c.y)
+	mi.position = Vector3(c.x, y - 0.05, c.y)
 	_parent.add_child(mi)
 
 func _build_river(river: RiverBuilder) -> void:

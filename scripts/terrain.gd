@@ -7,7 +7,7 @@ const GrassFieldScript = preload("res://scripts/grass_field.gd")
 const WorldGen = preload("res://scripts/world/world_generator.gd")
 
 const SIZE := 1000.0
-const RES := 256
+const RES := 320
 const WATER_LEVEL := -2.0
 const MAX_HEIGHT := 88.0
 
