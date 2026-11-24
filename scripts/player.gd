@@ -317,6 +317,9 @@ func _physics_process(delta: float) -> void:
 	var speed := SPRINT_SPEED if Input.is_action_pressed("sprint") else WALK_SPEED
 	velocity.x = move_toward(velocity.x, dir.x * speed, 40.0 * delta)
 	velocity.z = move_toward(velocity.z, dir.z * speed, 40.0 * delta)
+	if _would_enter_water():
+		velocity.x = 0.0
+		velocity.z = 0.0
 	move_and_slide()
 
 	_animate(delta, input.length() > 0.05)
@@ -337,6 +340,16 @@ func _physics_process(delta: float) -> void:
 		elif _target != null:
 			_target.interact(self)
 	_update_build_ghost()
+
+func _would_enter_water() -> bool:
+	if terrain == null or not terrain.has_method("is_water"):
+		return false
+	if velocity.x == 0.0 and velocity.z == 0.0:
+		return false
+	if terrain.is_water(global_position.x, global_position.z):
+		return false
+	var probe := global_position + Vector3(velocity.x, 0.0, velocity.z).normalized() * 0.9
+	return terrain.is_water(probe.x, probe.z)
 
 func _animate(delta: float, moving: bool) -> void:
 	if sitting:

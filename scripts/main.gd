@@ -176,6 +176,11 @@ func _ready() -> void:
 				if w.hf.slope_deg(pp.x, pp.z) > 28.0:
 					trees_on_cliffs += 1
 		print("SELFTEST trees_on_cliffs=", trees_on_cliffs, " hash=", w.heights_hash())
+		if w.layout.pois.has("lake"):
+			var lp: Dictionary = w.layout.pois["lake"]
+			var lc: Vector2 = lp["center"]
+			print("SELFTEST lake y=", snappedf(float(lp.get("y", 0.0)), 0.01), " center_h=", snappedf(w.hf.sample(lc.x, lc.y), 0.01))
+			print("SELFTEST probe(-11,-68) h=", snappedf(w.hf.sample(-11.0, -68.0), 0.01), " water=", w.is_water(-11.0, -68.0))
 		for key in w.layout.pois:
 			var pc: Vector2 = w.layout.pois[key]["center"]
 			print("SELFTEST poi ", key, " x=", int(pc.x), " z=", int(pc.y), " h=", int(w.hf.sample(pc.x, pc.y)))
