@@ -9,9 +9,9 @@ static func is_cliff(slope_deg: float) -> bool:
 static func tree_allowed(ctx: Dictionary) -> bool:
 	if bool(ctx.get("water", false)):
 		return false
-	if float(ctx["height"]) < WorldConfig.SEA_LEVEL + 2.5:
+	if float(ctx["height"]) < WorldConfig.SEA_LEVEL + 3.0:
 		return false
-	if float(ctx["slope_deg"]) > 28.0:
+	if float(ctx["slope_deg"]) > 26.0:
 		return false
 	if float(ctx["road"]) > 0.18:
 		return false

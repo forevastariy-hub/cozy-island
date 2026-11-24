@@ -81,12 +81,12 @@ const POI := {
 const RIVER := {
 	"step": 14.0,
 	"sample": 3.0,
-	"width": 8.0,
-	"depth": 1.3,
-	"bank": 3.5,
-	"valley": 12.0,
+	"width": 12.0,
+	"depth": 1.6,
+	"bank": 5.0,
+	"valley": 16.0,
 	"waterfall_drop": 1.1,
-	"max_waterfalls": 3
+	"max_waterfalls": 0
 }
 
 const ROAD := {
@@ -97,8 +97,8 @@ const ROAD := {
 }
 
 const SCATTER := {
-	"pine": 320,
-	"decid": 300,
+	"pine": 480,
+	"decid": 420,
 	"rock": 140,
 	"bush": 120,
 	"reed": 90

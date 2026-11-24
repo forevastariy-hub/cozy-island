@@ -12,7 +12,7 @@ func _ready() -> void:
 	_build()
 
 func _build() -> void:
-	_kind = rng.randi_range(0, 3)
+	_kind = [0, 0, 1, 1, 2, 3][rng.randi_range(0, 5)]
 
 	var root := Node3D.new()
 	add_child(root)

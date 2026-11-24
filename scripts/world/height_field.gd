@@ -44,7 +44,7 @@ func build_base(world_seed: int, coast: Coastline) -> void:
 		for xi in range(N):
 			var x := -WorldConfig.SIZE * 0.5 + float(xi) * cell
 			grid[zi * N + xi] = _base_at(x, z, coast)
-	_smooth_all(2)
+	_smooth_all(1)
 
 func _base_at(x: float, z: float, coast: Coastline) -> float:
 	var signed := coast.signed_distance(x, z)
@@ -63,7 +63,7 @@ func _inland_height(x: float, z: float, _signed: float) -> float:
 	var n := _noise.get_noise_2d(x * 0.0045, z * 0.0045) * 0.5 + 0.5
 	var n2 := _noise.get_noise_2d(x * 0.012 + 50.0, z * 0.012 - 30.0) * 0.5 + 0.5
 	var terraced := _terrace(n, 4.0)
-	var h := 3.0 + terraced * 9.0 + n2 * 2.2
+	var h := 3.0 + terraced * 14.0 + n2 * 3.0
 	return maxf(h, 2.5)
 
 func _beach_width(_x: float, _z: float) -> float:
@@ -168,6 +168,33 @@ func biome_at(x: float, z: float) -> int:
 		return WorldConfig.ZONE_GENERAL
 	return biome[node_index(x, z)]
 
+func moisture_at(x: float, z: float) -> float:
+	if moisture.is_empty():
+		return 0.5
+	return moisture[node_index(x, z)]
+
+func raise_inland_lowlands(coast: Coastline, layout: PoiLayout) -> void:
+	var lake: Dictionary = layout.pois.get("lake", {})
+	var lake_c := Vector2.ZERO
+	var lake_size := Vector2.ONE
+	var lake_phase := 0.0
+	if not lake.is_empty():
+		lake_c = lake["center"]
+		lake_size = lake["size"]
+		lake_phase = ShapeUtil.phase_for(lake_c)
+	for zi in range(N):
+		var z := -WorldConfig.SIZE * 0.5 + float(zi) * cell
+		for xi in range(N):
+			var x := -WorldConfig.SIZE * 0.5 + float(xi) * cell
+			var idx := zi * N + xi
+			if grid[idx] >= WorldConfig.SEA_LEVEL + 0.05:
+				continue
+			if coast.signed_distance(x, z) < 25.0:
+				continue
+			if not lake.is_empty() and ShapeUtil.ellipse_norm(x, z, lake_c, lake_size, lake_phase) < 1.25:
+				continue
+			grid[idx] = WorldConfig.SEA_LEVEL + 0.05
+
 func lower_to(x: float, z: float, target: float) -> void:
 	var idx := node_index(x, z)
 	if grid[idx] > target:
@@ -246,7 +273,7 @@ func apply_pois(layout: PoiLayout) -> void:
 				_plateau(c, 46.0, 20.0, 12.0)
 			"lake":
 				var rim := _rim_min(c, sz * 0.5)
-				var lake_y := clampf(rim - 0.5, WorldConfig.SEA_LEVEL + 2.0, 9.0)
+				var lake_y := clampf(rim - 0.8, WorldConfig.SEA_LEVEL + 2.0, 9.0)
 				p["y"] = lake_y
 				_lake_basin(c, sz * 0.5, lake_y, 3.0)
 				_smooth_rect(c, maxf(sz.x, sz.y) * 0.62, 2)

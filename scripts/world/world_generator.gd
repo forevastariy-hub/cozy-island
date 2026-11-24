@@ -23,6 +23,7 @@ func generate(seed_value: int, parent: Node3D) -> void:
 	layout.place(hf, coast, WorldRng.new(seed_value, "poi"))
 	hf.apply_pois(layout)
 	river.build(hf, layout, coast, WorldRng.new(seed_value, "river"))
+	hf.raise_inland_lowlands(coast, layout)
 	hf.build_biomes()
 	zones.build(layout, hf)
 	roads.build(route_points(), hf, layout, river)
