@@ -17,9 +17,11 @@ var _minimap: ImageTexture
 var _minimap_size := 0
 var _noise: FastNoiseLite
 var _zones: ZoneMap
+var _river: RiverBuilder
 
-func build(hf: HeightField, zones: ZoneMap, coast: Coastline, roads: RoadBuilder) -> void:
+func build(hf: HeightField, zones: ZoneMap, coast: Coastline, roads: RoadBuilder, river: RiverBuilder) -> void:
 	_zones = zones
+	_river = river
 	heights = hf.grid.duplicate()
 	_noise = FastNoiseLite.new()
 	_noise.seed = 424242
@@ -90,8 +92,8 @@ func _build_zone_grids(hf: HeightField, zones: ZoneMap, coast: Coastline) -> voi
 				var sz: Vector2 = swamp_def["size"]
 				var phase: float = swamp_def["phase"]
 				swamp = 1.0 - smoothstep(0.70, 1.15, ShapeUtil.ellipse_norm(x, z, c, sz, phase))
-			var rock := smoothstep(30.0, 44.0, slope)
-			rock = maxf(rock, smoothstep(32.0, 50.0, h))
+			var rock := smoothstep(32.0, 46.0, slope)
+			rock = maxf(rock, smoothstep(26.0, 40.0, h))
 			var sd := coast.signed_distance(x, z)
 			var shore := 0.0
 			if sd > -14.0 and sd < 120.0:
@@ -157,8 +159,8 @@ func _color_for(x: float, z: float, h: float, slope: float, zone_type: int, mudv
 			c = Color(0.20, 0.30, 0.28).lerp(Color(0.26, 0.36, 0.30), n)
 	if mudv > 0.05:
 		c = c.lerp(Color(0.35, 0.27, 0.17), clampf(mudv, 0.0, 1.0) * 0.7)
-	var rock_amt := smoothstep(30.0, 44.0, slope)
-	rock_amt = maxf(rock_amt, smoothstep(32.0, 50.0, h) * 0.85)
+	var rock_amt := smoothstep(32.0, 46.0, slope)
+	rock_amt = maxf(rock_amt, smoothstep(26.0, 40.0, h) * 0.85)
 	if rock_amt > 0.01:
 		var rock_col := Color(0.47, 0.44, 0.39).lerp(Color(0.60, 0.55, 0.47), n)
 		c = c.lerp(rock_col, rock_amt)
@@ -177,6 +179,10 @@ func minimap_texture(size: int = 160) -> ImageTexture:
 			var wx := -WorldConfig.SIZE * 0.5 + (float(x) + 0.5) * WorldConfig.SIZE / float(size)
 			var idx := _node_at(wx, wz)
 			var h := heights[idx]
+			var river_water := _river != null and _river.is_water_at(Vector2(wx, wz), h)
+			if river_water:
+				img.set_pixel(x, y, Color(0.20, 0.44, 0.50))
+				continue
 			var zt := WorldConfig.ZONE_GENERAL
 			if h < WorldConfig.SEA_LEVEL + 0.2:
 				zt = WorldConfig.ZONE_LAKE

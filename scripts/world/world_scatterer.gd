@@ -19,8 +19,8 @@ func _ctx(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiL
 	var zdef := zones.zone_at(x, z)
 	var zt := int(zdef.get("type", WorldConfig.ZONE_GENERAL))
 	var water_y := WorldConfig.SEA_LEVEL
-	if zt == WorldConfig.ZONE_LAKE:
-		water_y = WorldConfig.LAKE_Y
+	if zt == WorldConfig.ZONE_LAKE and layout.pois.has("lake"):
+		water_y = float(layout.pois["lake"].get("y", WorldConfig.LAKE_Y))
 	var water := false
 	if h < WorldConfig.SEA_LEVEL + 0.25:
 		water = true

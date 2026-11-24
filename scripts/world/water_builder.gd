@@ -60,7 +60,7 @@ func _build_lake(layout: PoiLayout) -> void:
 	for i in range(segs):
 		var a := TAU * float(i) / float(segs)
 		var w := ShapeUtil.wobble(a, phase)
-		verts.append(Vector3(cos(a) * sz.x * 0.49 * w, 0.0, sin(a) * sz.y * 0.49 * w))
+		verts.append(Vector3(cos(a) * sz.x * 0.47 * w, 0.0, sin(a) * sz.y * 0.47 * w))
 		norms.append(Vector3.UP)
 	for i in range(segs):
 		var i0 := 1 + i

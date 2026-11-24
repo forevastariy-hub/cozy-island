@@ -26,7 +26,7 @@ func generate(seed_value: int, parent: Node3D) -> void:
 	hf.build_biomes()
 	zones.build(layout, hf)
 	roads.build(route_points(), hf, layout, river)
-	painter.build(hf, zones, coast, roads)
+	painter.build(hf, zones, coast, roads, river)
 	mesh.build(parent, hf, painter)
 	water.build(parent, painter.mask_texture, layout, river)
 	scatter.build(hf, zones, painter, layout, river, WorldRng.new(seed_value, "scatter"))
@@ -38,7 +38,8 @@ func is_water(x: float, z: float) -> bool:
 	if layout.pois.has("lake"):
 		var lp: Dictionary = layout.pois["lake"]
 		var lc: Vector2 = lp["center"]
-		if h < WorldConfig.LAKE_Y and ShapeUtil.ellipse_norm(x, z, lc, lp["size"], ShapeUtil.phase_for(lc)) < 1.0:
+		var lake_y := float(lp.get("y", WorldConfig.LAKE_Y))
+		if h < lake_y and ShapeUtil.ellipse_norm(x, z, lc, lp["size"], ShapeUtil.phase_for(lc)) < 1.0:
 			return true
 	return river.is_water_at(Vector2(x, z), h)
 
@@ -64,7 +65,7 @@ func rebuild_roads(points: Array) -> void:
 	if points.size() < 2:
 		return
 	roads.build(points, hf, layout, river)
-	painter.build(hf, zones, coast, roads)
+	painter.build(hf, zones, coast, roads, river)
 	if mesh.material != null:
 		mesh.apply_mask(painter.mask_texture)
 	water.apply_mask(painter.mask_texture)

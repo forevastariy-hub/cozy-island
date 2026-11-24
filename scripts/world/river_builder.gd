@@ -28,7 +28,7 @@ func build(hf: HeightField, layout: PoiLayout, coast: Coastline, rng: WorldRng) 
 	var smooth := _chaikin(_chaikin(path))
 	_resample(smooth, WorldConfig.RIVER.sample)
 	_update_bbox()
-	_recompute_water(hf)
+	_recompute_water(hf, float(lake.get("y", WorldConfig.LAKE_Y)))
 	_carve(hf)
 	_detect_waterfalls(hf)
 
@@ -163,9 +163,9 @@ func _update_bbox() -> void:
 		mx = Vector2(maxf(mx.x, p.x), maxf(mx.y, p.y))
 	bbox = Rect2(mn, mx - mn)
 
-func _recompute_water(hf: HeightField) -> void:
+func _recompute_water(hf: HeightField, lake_y: float) -> void:
 	water_levels.resize(polyline.size())
-	var wl := WorldConfig.LAKE_Y
+	var wl := lake_y
 	for i in range(polyline.size()):
 		var p := polyline[i]
 		var h := hf.sample(p.x, p.y)

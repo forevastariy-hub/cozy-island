@@ -15,10 +15,8 @@ var temperature := PackedFloat32Array()
 var biome := PackedInt32Array()
 
 var _noise: FastNoiseLite
-var _ridge: FastNoiseLite
 var _islet: FastNoiseLite
 var _rugged: FastNoiseLite
-var _mountain_centers: Array = []
 
 func build_base(world_seed: int, coast: Coastline) -> void:
 	_noise = FastNoiseLite.new()
@@ -27,12 +25,6 @@ func build_base(world_seed: int, coast: Coastline) -> void:
 	_noise.frequency = 1.0
 	_noise.fractal_octaves = 5
 	_noise.fractal_gain = 0.5
-	_ridge = FastNoiseLite.new()
-	_ridge.seed = world_seed + 31
-	_ridge.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	_ridge.frequency = 1.0
-	_ridge.fractal_octaves = 4
-	_ridge.fractal_gain = 0.5
 	_islet = FastNoiseLite.new()
 	_islet.seed = world_seed + 91
 	_islet.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -44,18 +36,6 @@ func build_base(world_seed: int, coast: Coastline) -> void:
 	_rugged.noise_type = FastNoiseLite.TYPE_CELLULAR
 	_rugged.frequency = 0.03
 
-	_mountain_centers.clear()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = world_seed * 7 + 13
-	for _i in range(2):
-		var a := rng.randf_range(0.0, TAU)
-		var r := rng.randf_range(130.0, 240.0)
-		_mountain_centers.append({
-			"c": Vector2(cos(a), sin(a)) * r,
-			"radius": rng.randf_range(80.0, 130.0),
-			"height": rng.randf_range(0.8, 1.0),
-		})
-
 	grid.resize(N * N)
 	mud.resize(N * N)
 	mud.fill(0.0)
@@ -64,6 +44,7 @@ func build_base(world_seed: int, coast: Coastline) -> void:
 		for xi in range(N):
 			var x := -WorldConfig.SIZE * 0.5 + float(xi) * cell
 			grid[zi * N + xi] = _base_at(x, z, coast)
+	_smooth_all(2)
 
 func _base_at(x: float, z: float, coast: Coastline) -> float:
 	var signed := coast.signed_distance(x, z)
@@ -78,37 +59,15 @@ func _base_at(x: float, z: float, coast: Coastline) -> float:
 		h = maxf(h, isl)
 	return h
 
-func _inland_height(x: float, z: float, signed: float) -> float:
-	var plains := 3.0 + (_noise.get_noise_2d(x * 0.0035, z * 0.0035) * 0.5 + 0.5) * 7.5
-	var band := _mountain_mask(x, z) * smoothstep(-10.0, 30.0, signed)
-	var ridge := _ridged(x, z)
-	var mountains := pow(ridge, 1.7) * band * 58.0
-	return plains + mountains
+func _inland_height(x: float, z: float, _signed: float) -> float:
+	var n := _noise.get_noise_2d(x * 0.0045, z * 0.0045) * 0.5 + 0.5
+	var n2 := _noise.get_noise_2d(x * 0.012 + 50.0, z * 0.012 - 30.0) * 0.5 + 0.5
+	var terraced := _terrace(n, 4.0)
+	var h := 3.0 + terraced * 9.0 + n2 * 2.2
+	return maxf(h, 2.5)
 
-func _mountain_mask(x: float, z: float) -> float:
-	var best := 0.0
-	for m in _mountain_centers:
-		var c: Vector2 = m["c"]
-		var radius: float = m["radius"]
-		var d := Vector2(x, z).distance_to(c)
-		var g := exp(-(d * d) / (2.0 * radius * radius))
-		best = maxf(best, g * float(m["height"]))
-	return clampf(pow(best * 1.15, 1.8), 0.0, 1.0)
-
-func _ridged(x: float, z: float) -> float:
-	var v := 0.0
-	var amp := 0.6
-	var f := 0.0045
-	for _i in range(4):
-		var n := 1.0 - absf(_ridge.get_noise_2d(x * f, z * f))
-		v += n * n * amp
-		f *= 2.11
-		amp *= 0.52
-	return clampf(v * 1.45, 0.0, 1.0)
-
-func _beach_width(x: float, z: float) -> float:
-	var m := _mountain_mask(x, z)
-	return lerpf(78.0, 14.0, clampf(m * 1.25, 0.0, 1.0))
+func _beach_width(_x: float, _z: float) -> float:
+	return 68.0
 
 func _bathy(x: float, z: float, signed: float) -> float:
 	var d := maxf(0.0, -signed)
@@ -130,10 +89,42 @@ func _sea_islet(x: float, z: float, signed: float) -> float:
 	var rise := (isl - 0.52) / 0.48
 	return WorldConfig.SEA_LEVEL - 1.3 + rise * 8.0 * fade
 
-func _hill(x: float, z: float, cx: float, cz: float, radius: float, height: float) -> float:
-	var dx := x - cx
-	var dz := z - cz
-	return height * exp(-(dx * dx + dz * dz) / (2.0 * radius * radius))
+func _smooth_all(passes: int) -> void:
+	for _p in range(passes):
+		var src := grid.duplicate()
+		for zi in range(1, N - 1):
+			for xi in range(1, N - 1):
+				var s := 0.0
+				for dz in [-1, 0, 1]:
+					for dx in [-1, 0, 1]:
+						s += src[(zi + dz) * N + (xi + dx)]
+				grid[zi * N + xi] = s / 9.0
+
+func _smooth_rect(center: Vector2, radius: float, passes: int) -> void:
+	var j0 := clampi(int(floor((center.y - radius + WorldConfig.SIZE * 0.5) / cell)), 1, N - 2)
+	var j1 := clampi(int(ceil((center.y + radius + WorldConfig.SIZE * 0.5) / cell)), 1, N - 2)
+	var i0 := clampi(int(floor((center.x - radius + WorldConfig.SIZE * 0.5) / cell)), 1, N - 2)
+	var i1 := clampi(int(ceil((center.x + radius + WorldConfig.SIZE * 0.5) / cell)), 1, N - 2)
+	for _p in range(passes):
+		var src := grid.duplicate()
+		for zi in range(j0, j1 + 1):
+			for xi in range(i0, i1 + 1):
+				var s := 0.0
+				for dz in [-1, 0, 1]:
+					for dx in [-1, 0, 1]:
+						s += src[(zi + dz) * N + (xi + dx)]
+				grid[zi * N + xi] = s / 9.0
+
+func _rim_min(center: Vector2, radii: Vector2) -> float:
+	var size := radii * 2.0
+	var phase := ShapeUtil.phase_for(center)
+	var best := 1.0e9
+	for i in range(48):
+		var a := TAU * float(i) / 48.0
+		var w := ShapeUtil.wobble(a, phase)
+		var p := center + Vector2(cos(a) * radii.x * w, sin(a) * radii.y * w)
+		best = minf(best, sample(p.x, p.y))
+	return best
 
 func sample(x: float, z: float) -> float:
 	var fx := (x + WorldConfig.SIZE * 0.5) / cell
@@ -246,15 +237,19 @@ func apply_pois(layout: PoiLayout) -> void:
 			"fields":
 				_flatten(c, sz * 0.45, 9.0, 0.9, 1.1)
 			"ruins":
-				_flatten(c, Vector2(40.0, 36.0), 14.0, 0.92, 2.0)
+				_flatten(c, Vector2(40.0, 36.0), 10.0, 0.92, 2.0)
 			"mountain":
-				_plateau(c, 78.0, 30.0, 36.0)
+				_plateau(c, 70.0, 26.0, 16.0)
 			"radio_tower":
-				_plateau(c, 88.0, 32.0, 44.0)
+				_plateau(c, 74.0, 28.0, 20.0)
 			"stone_tower":
-				_plateau(c, 58.0, 24.0, 26.0)
+				_plateau(c, 46.0, 20.0, 12.0)
 			"lake":
-				_lake_basin(c, sz * 0.5, 8.0, 4.5)
+				var rim := _rim_min(c, sz * 0.5)
+				var lake_y := clampf(rim - 0.5, WorldConfig.SEA_LEVEL + 2.0, 9.0)
+				p["y"] = lake_y
+				_lake_basin(c, sz * 0.5, lake_y, 3.0)
+				_smooth_rect(c, maxf(sz.x, sz.y) * 0.62, 2)
 			"swamp":
 				_swamp_basin(c, sz * 0.5)
 
@@ -283,7 +278,7 @@ func build_biomes() -> void:
 			var t := WorldConfig.ZONE_GENERAL
 			if h < WorldConfig.SEA_LEVEL + 0.3:
 				t = WorldConfig.ZONE_LAKE
-			elif slope > 32.0 or h > 36.0:
+			elif slope > 32.0 or h > 24.0:
 				t = WorldConfig.ZONE_MOUNTAIN
 			elif moist > 0.68 and h < WorldConfig.SEA_LEVEL + 4.2:
 				t = WorldConfig.ZONE_SWAMP
@@ -311,6 +306,8 @@ func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, p
 			if f <= 0.0:
 				continue
 			var idx := zi * N + xi
+			if grid[idx] > target + 3.5:
+				continue
 			grid[idx] = lerpf(grid[idx], target, f)
 
 func _plateau(center: Vector2, base_r: float, plateau_r: float, target: float) -> void:
