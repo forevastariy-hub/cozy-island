@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CHILL ISLAND MAP EDITOR</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="toolbar">
+    <div class="brand">
+      <div class="brand-mark">CI</div>
+      <div class="brand-text">
+        <div class="brand-title">CHILL ISLAND <span>MAP EDITOR</span></div>
+        <div class="brand-sub" id="mapTitle">Cozy Island</div>
+      </div>
+    </div>
+
+    <div class="tool-group" role="group" aria-label="Инструменты">
+      <button class="tool" data-tool="select" title="Выбор и перемещение">Выбор</button>
+      <button class="tool" data-tool="zone" title="Создать зону">Зона</button>
+      <button class="tool" data-tool="river" title="Нарисовать реку">Река</button>
+      <button class="tool" data-tool="road" title="Нарисовать дорогу">Дорога</button>
+      <button class="tool" data-tool="terrain" title="Правка рельефа">Рельеф</button>
+      <button class="tool" data-tool="landmark" title="Поставить объект">Объект</button>
+      <button class="tool" data-tool="vegetation" title="Поставить растение">Растение</button>
+      <button class="tool" data-tool="coast" title="Редактировать берег">Берег</button>
+    </div>
+
+    <div class="tool-group compact">
+      <button class="tool icon" id="btnUndo" title="Отменить (Ctrl+Z)">↶</button>
+      <button class="tool icon" id="btnRedo" title="Повторить (Ctrl+Y)">↷</button>
+    </div>
+
+    <div class="tool-group compact view-group">
+      <button class="tool" id="btnIso" title="Изометрический вид">Изо</button>
+      <button class="tool" id="btnTop" title="Вид сверху">Сверху</button>
+      <button class="tool" id="btnFit" title="Вписать карту">Вписать</button>
+      <label class="height-scale" title="Визуальное увеличение высоты">
+        <span>Высота</span>
+        <input id="heightScale" type="range" min="0.4" max="4" step="0.1" value="1.8">
+        <output id="heightScaleOut">1.8</output>
+      </label>
+    </div>
+
+    <div class="tool-group file-group">
+      <button class="tool" id="btnImport" title="Импорт JSON">Импорт</button>
+      <button class="tool accent" id="btnExport" title="Экспорт JSON">Экспорт</button>
+      <button class="tool" id="btnSaveVersion" title="Сохранить версию в браузере">Версия</button>
+      <select class="tool-select" id="versions" title="Загрузить сохранённую версию">
+        <option value="">Версии…</option>
+      </select>
+      <button class="tool danger-ghost" id="btnReset" title="Сбросить к образцу">Сброс</button>
+    </div>
+  </header>
+
+  <aside class="panel left-panel">
+    <section class="panel-section">
+      <div class="panel-title">Инструмент</div>
+      <div id="toolOptions"></div>
+    </section>
+    <section class="panel-section">
+      <div class="panel-title">Слои</div>
+      <div id="layers" class="layers"></div>
+    </section>
+    <section class="panel-section grow objects-section">
+      <div class="panel-title">Объекты карты</div>
+      <div id="objects" class="objects"></div>
+    </section>
+  </aside>
+
+  <main id="viewport">
+    <canvas id="view"></canvas>
+    <div class="viewport-hud">
+      <span>ЛКМ — инструмент</span>
+      <span>СКМ — орбита</span>
+      <span>Shift+СКМ / ПКМ — панорама</span>
+      <span>Колесо — зум</span>
+    </div>
+    <div id="drawHud" class="draw-hud hidden">
+      <span id="drawCount">Точек: 0</span>
+      <span class="draw-hint">Enter / ПКМ — завершить</span>
+      <button class="btn small" id="btnFinishDraw">Готово</button>
+      <button class="btn small ghost" id="btnCancelDraw">Отмена</button>
+    </div>
+    <div id="toast" class="toast"></div>
+  </main>
+
+  <aside class="panel right-panel">
+    <section class="panel-section grow inspector-section">
+      <div id="inspector"></div>
+    </section>
+    <section class="panel-section issues-section">
+      <div class="panel-title row-title">
+        <span>Проверки карты</span>
+        <button class="btn tiny" id="btnCheck">Проверить</button>
+      </div>
+      <div id="issues" class="issues"></div>
+    </section>
+  </aside>
+
+  <footer class="statusbar">
+    <div class="status-left">
+      <span class="status-brand">CHILL EDITOR</span>
+      <span id="coords">X 0   Z 0</span>
+    </div>
+    <div id="hint" class="status-hint"></div>
+    <div class="status-right">
+      <button id="issueBadge" class="issue-badge clean" title="Показать проверки">Проверки</button>
+      <span id="saveState" class="save-state">Автосохранение включено</span>
+    </div>
+  </footer>
+</div>
+
+<input type="file" id="fileInput" accept="application/json,.json" hidden>
+
+<div id="exportModal" class="modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div>
+        <h2>Экспорт карты</h2>
+        <div class="sub">JSON совместим с генератором Chill Island</div>
+      </div>
+      <button class="btn ghost" id="btnExportClose">Закрыть</button>
+    </div>
+    <div id="exportSummary" class="export-summary"></div>
+    <div class="modal-body">
+      <div class="export-left">
+        <div class="panel-title">Проверки</div>
+        <div id="exportIssues" class="issues export-issues"></div>
+      </div>
+      <div class="export-right">
+        <div class="panel-title">JSON</div>
+        <textarea id="exportJson" class="export-json" readonly spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btnExportCopy">Копировать JSON</button>
+      <button class="btn accent" id="btnExportDownload">Скачать JSON</button>
+    </div>
+  </div>
+</div>
+
+<div id="bootError" class="boot-error hidden"></div>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/noise.js"></script>
+<script src="js/geometry.js"></script>
+<script src="js/data.js"></script>
+<script src="js/terrain.js"></script>
+<script src="js/validation.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/editor.js"></script>
+<script>
+  window.addEventListener('error', function (e) {
+    var box = document.getElementById('bootError');
+    if (!box) return;
+    box.classList.remove('hidden');
+    box.textContent = 'Ошибка редактора: ' + (e.message || e);
+  });
+</script>
+</body>
+</html>
