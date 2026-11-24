@@ -504,6 +504,36 @@ func build_farmhouse(parent: Node3D, pos: Vector3) -> Node3D:
 	parent.add_child(root)
 	return root
 
+func build_bridge(parent: Node3D, pos: Vector3, dir: Vector3, width: float) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Bridge"
+	root.position = pos
+	root.rotation.y = atan2(dir.x, dir.z)
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.46, 0.31, 0.18)
+	wood.roughness = 0.95
+	var span := maxf(6.0, width)
+	var planks := 10
+	for i in range(planks):
+		var x := -span * 0.5 + (float(i) + 0.5) * (span / float(planks))
+		var plank := _box(Vector3(span / float(planks) * 0.92, 0.09, 2.4), wood, Vector3(x, 0.08, 0.0))
+		plank.rotation.y = randf_range(-0.02, 0.02)
+		root.add_child(plank)
+	for side in [-1.0, 1.0]:
+		root.add_child(_box(Vector3(span, 0.08, 0.08), wood, Vector3(0.0, 0.62, side * 1.15)))
+		for xx in [-span * 0.42, 0.0, span * 0.42]:
+			root.add_child(_box(Vector3(0.07, 0.54, 0.07), wood, Vector3(xx, 0.35, side * 1.15)))
+	var body := StaticBody3D.new()
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(span, 0.18, 2.4)
+	col.shape = shape
+	col.position.y = 0.08
+	body.add_child(col)
+	root.add_child(body)
+	parent.add_child(root)
+	return root
+
 func _box(size: Vector3, mat: Material, pos: Vector3) -> MeshInstance3D:
 	var b := BoxMesh.new()
 	b.size = size

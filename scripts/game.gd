@@ -24,10 +24,14 @@ var time_of_day: float = 16.0
 var build_mode: bool = false
 var comfort: float = 100.0
 var selected_hotbar: int = 0
+var world_seed: int = 424242
 var _comfort_emit_timer := 0.0
 
 func _ready() -> void:
 	_setup_input()
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--seed="):
+			world_seed = int(arg.split("=")[1])
 	inventory["seed"] = 6
 	inventory["wood"] = 4
 

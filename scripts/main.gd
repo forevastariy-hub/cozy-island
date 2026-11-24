@@ -14,6 +14,7 @@ const PostFXScript = preload("res://scripts/post_fx.gd")
 const RuinsScript = preload("res://scripts/ruins.gd")
 const FloraScript = preload("res://scripts/flora.gd")
 const StructuresScript = preload("res://scripts/structures.gd")
+const ReedScript = preload("res://scripts/reed.gd")
 
 var terrain: Node3D
 var player: CharacterBody3D
@@ -75,6 +76,7 @@ func _ready() -> void:
 	_spawn_fishing_spots()
 	_place_structures()
 	_build_paths()
+	_place_bridges()
 	terrain.build_grass()
 	ui.setup_minimap()
 	_load_cheat_panel()
@@ -163,6 +165,29 @@ func _ready() -> void:
 		_load_game(save_path)
 		print("SELFTEST load_wood=", Game.count_item("wood"), " expected=", wood_before)
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
+		var w = terrain.world
+		print("SELFTEST seed=", w.world_seed, " poi_min=", w.layout.min_structure_distance())
+		print("SELFTEST river_pts=", w.river.polyline.size(), " waterfalls=", w.river.waterfalls.size(), " bridges=", w.roads.bridges.size())
+		var trees_on_cliffs := 0
+		for pl in w.scatter.placements:
+			var pk: String = pl["kind"]
+			if pk == "pine" or pk == "decid":
+				var pp: Vector3 = pl["pos"]
+				if w.hf.slope_deg(pp.x, pp.z) > 28.0:
+					trees_on_cliffs += 1
+		print("SELFTEST trees_on_cliffs=", trees_on_cliffs, " hash=", w.heights_hash())
+		for key in w.layout.pois:
+			var pc: Vector2 = w.layout.pois[key]["center"]
+			print("SELFTEST poi ", key, " x=", int(pc.x), " z=", int(pc.y), " h=", int(w.hf.sample(pc.x, pc.y)))
+		if not w.river.polyline.is_empty():
+			print("SELFTEST river_start=", w.river.polyline[0], " end=", w.river.polyline[w.river.polyline.size() - 1])
+			for i in [0, 20, 40, 60, 80, 100]:
+				if i < w.river.polyline.size():
+					var rp: Vector2 = w.river.polyline[i]
+					print("SELFTEST river[", i, "] x=", int(rp.x), " z=", int(rp.y), " wl=", snappedf(w.river.water_levels[i], 0.01), " ground=", snappedf(w.hf.sample(rp.x, rp.y), 0.01))
+		for br in w.roads.bridges:
+			var bp: Vector3 = br["pos"]
+			print("SELFTEST bridge x=", int(bp.x), " z=", int(bp.z), " y=", snappedf(bp.y, 0.01), " ground=", snappedf(w.hf.sample(bp.x, bp.z), 0.01))
 		print("SELFTEST done children=", get_child_count())
 		get_tree().quit()
 
@@ -214,106 +239,45 @@ func _find_spot(rng: RandomNumberGenerator, min_h: float, max_h: float, min_radi
 func _scatter_world() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20241108
+	for item in terrain.world.scatter.placements:
+		var kind: String = item["kind"]
+		var pos: Vector3 = item["pos"]
+		var rot: float = item["rot"]
+		var scl: float = item["scale"]
+		match kind:
+			"pine":
+				var t = TreeScript.new()
+				t.rng.seed = rng.randi()
+				t.kind = 1 if rng.randf() < 0.7 else 0
+				t.position = pos
+				t.rotation.y = rot
+				t.scale = Vector3(scl, scl * rng.randf_range(0.9, 1.2), scl)
+				add_child(t)
+			"decid":
+				var t2 = TreeScript.new()
+				t2.rng.seed = rng.randi()
+				t2.kind = 2
+				t2.position = pos
+				t2.rotation.y = rot
+				t2.scale = Vector3(scl, scl * rng.randf_range(0.9, 1.15), scl)
+				add_child(t2)
+			"rock":
+				var r = RockScript.new()
+				r.rng.seed = rng.randi()
+				r.position = pos
+				r.rotation.y = rot
+				r.scale = Vector3(scl, scl * rng.randf_range(0.7, 1.0), scl)
+				add_child(r)
+			"bush":
+				var b = BushScript.new()
+				b.rng.seed = rng.randi()
+				b.position = pos
+				add_child(b)
+			"reed":
+				var reed = ReedScript.new()
+				reed.position = pos
+				add_child(reed)
 
-	# Trees distributed by zone
-	var tree_counts := {
-		TerrainScript.ZONE_PINE_FOREST: 240,
-		TerrainScript.ZONE_DECIDUOUS_FOREST: 220,
-		TerrainScript.ZONE_FIELDS: 8,
-		TerrainScript.ZONE_GENERAL: 150,
-		TerrainScript.ZONE_CAMP: 12,
-		TerrainScript.ZONE_MOUNTAIN: 22,
-		TerrainScript.ZONE_STONE_TOWER: 4,
-		TerrainScript.ZONE_RUINS: 6,
-		TerrainScript.ZONE_RADIO_TOWER: 4,
-	}
-	var kind_by_zone := {
-		TerrainScript.ZONE_PINE_FOREST: 0,
-		TerrainScript.ZONE_DECIDUOUS_FOREST: 2,
-		TerrainScript.ZONE_FIELDS: 0,
-		TerrainScript.ZONE_GENERAL: 0,
-		TerrainScript.ZONE_CAMP: 0,
-		TerrainScript.ZONE_MOUNTAIN: 0,
-		TerrainScript.ZONE_STONE_TOWER: 0,
-		TerrainScript.ZONE_RUINS: 0,
-		TerrainScript.ZONE_RADIO_TOWER: 0,
-	}
-
-	for zone_key in tree_counts:
-		var count: int = tree_counts[zone_key]
-		var placed := 0
-		var tries: int = count * 12
-		for _i in range(tries):
-			if placed >= count:
-				break
-			# pick a zone center to bias placement
-			var zcenter := Vector2(0, 0)
-			var zradius := 60.0
-			for zdef in terrain._zones:
-				if zdef["type"] == zone_key:
-					zcenter = zdef["center"]
-					zradius = zdef["radius"]
-					break
-			var ang := rng.randf_range(0.0, TAU)
-			var rad := sqrt(rng.randf()) * zradius * 0.85
-			var x := zcenter.x + cos(ang) * rad
-			var z := zcenter.y + sin(ang) * rad
-			if absf(x) > 470.0 or absf(z) > 470.0:
-				continue
-			var h: float = terrain.get_height(x, z)
-			if h < 0.2 or h > 30.0:
-				continue
-			if 1.0 - terrain.get_normal(x, z).y > 0.45:
-				continue
-			var zone: Vector4 = terrain.get_zone(x, z)
-			if zone.x > 0.3 or zone.z > 0.6:
-				continue
-			var t = TreeScript.new()
-			t.rng.seed = rng.randi()
-			t.position = p_on_land(x, z)
-			t.rotation.y = rng.randf_range(0.0, TAU)
-			t.kind = kind_by_zone[zone_key]
-			# deciduous slightly larger
-			var s := rng.randf_range(0.85, 1.3)
-			if t.kind == 2:
-				s = rng.randf_range(1.0, 1.5)
-			t.scale = Vector3(s, rng.randf_range(0.9, 1.3), s)
-			add_child(t)
-			placed += 1
-
-	# Rocks scattered across the island
-	for _i in range(100):
-		var p = _find_spot(rng, 0.0, 22.0, 6.0, 460.0)
-		if p == null:
-			continue
-		var r = RockScript.new()
-		r.rng.seed = rng.randi()
-		r.position = p
-		r.rotation.y = rng.randf_range(0.0, TAU)
-		add_child(r)
-	# Larger boulders up on the hills
-	for _i in range(40):
-		var p = _find_spot(rng, 20.0, 62.0, 6.0, 460.0)
-		if p == null:
-			continue
-		var r2 = RockScript.new()
-		r2.rng.seed = rng.randi()
-		r2.position = p
-		r2.rotation.y = rng.randf_range(0.0, TAU)
-		r2.scale = Vector3(1.4, 1.4, 1.4)
-		add_child(r2)
-
-	# Bushes
-	for _i in range(120):
-		var p = _find_spot(rng, -0.5, 16.0, 5.0, 460.0)
-		if p == null:
-			continue
-		var b = BushScript.new()
-		b.rng.seed = rng.randi()
-		b.position = p
-		add_child(b)
-
-	# Flora: flowers and mushrooms
 	flora = FloraScript.new()
 	flora.name = "Flora"
 	flora.terrain = terrain
@@ -420,6 +384,12 @@ func spawn_campfire(pos: Vector3) -> void:
 	var c = CampfireScript.new()
 	c.position = pos
 	add_child(c)
+
+func _place_bridges() -> void:
+	if structures == null:
+		return
+	for br in terrain.world.roads.bridges:
+		structures.build_bridge(structures, br["pos"], br["dir"], br["width"])
 
 func _build_paths() -> void:
 	var points: Array = [player.global_position]
