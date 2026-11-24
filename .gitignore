@@ -6,8 +6,11 @@ export_presets.cfg
 
 # Build artifacts / screenshots made by --shot and --mapshot
 /mapshot.png
+/mapshot.png.import
 /shot.png
+/shot.png.import
 /shot_*.png
+/shot_*.png.import
 
 # OS junk
 Thumbs.db
