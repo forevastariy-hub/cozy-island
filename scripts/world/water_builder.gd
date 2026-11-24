@@ -66,14 +66,20 @@ func _build_lake(layout: PoiLayout, hf: HeightField) -> void:
 		var w := ShapeUtil.wobble(a, phase)
 		var limit := w / sqrt(pow(dir.x / rx, 2.0) + pow(dir.y / rz, 2.0)) * 1.02
 		var edge := 0.0
+		var found := false
 		for k in range(24):
 			var r := limit * (1.0 - float(k) / 23.0)
 			if hf.sample(c.x + dir.x * r, c.y + dir.y * r) < y - 0.05:
 				edge = r
+				found = true
 				break
+		var vy := 0.0
+		if not found:
+			edge = limit
+			vy = hf.sample(c.x + dir.x * edge, c.y + dir.y * edge) - (y - 0.05)
 		if edge < 1.0:
 			edge = 1.0
-		verts.append(Vector3(dir.x * edge, 0.0, dir.y * edge))
+		verts.append(Vector3(dir.x * edge, vy, dir.y * edge))
 		norms.append(Vector3.UP)
 	for i in range(segs):
 		var i0 := 1 + i

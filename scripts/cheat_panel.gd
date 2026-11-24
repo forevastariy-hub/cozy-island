@@ -103,8 +103,11 @@ func _btn(text: String, cb: Callable) -> Button:
 func _refresh_info() -> void:
 	if _info == null:
 		return
-	_info.text = "F3 — скрыть/показать   ·   день %d, %02d:%02d" % [
-		Game.day, int(Game.time_of_day), int(fmod(Game.time_of_day, 1.0) * 60.0)]
+	var pos_text := ""
+	if player != null:
+		pos_text = "   ·   x %.0f  z %.0f" % [player.global_position.x, player.global_position.z]
+	_info.text = "F3 — скрыть/показать   ·   день %d, %02d:%02d%s" % [
+		Game.day, int(Game.time_of_day), int(fmod(Game.time_of_day, 1.0) * 60.0), pos_text]
 
 func _process(_delta: float) -> void:
 	if visible:
@@ -162,15 +165,21 @@ func _teleport() -> void:
 	Game.toast("Телепорт: %s" % key)
 
 func _find_land_near(c: Vector2) -> Vector3:
-	var h: float = terrain.get_height(c.x, c.y)
-	if h > -1.0:
-		return Vector3(c.x, h + 2.0, c.y)
-	for r in range(1, 24):
-		for a in range(16):
-			var ang := TAU * float(a) / 16.0
+	if _is_dry(c.x, c.y):
+		return Vector3(c.x, terrain.get_height(c.x, c.y) + 2.0, c.y)
+	for r in range(1, 40):
+		for a in range(24):
+			var ang := TAU * float(a) / 24.0
 			var x := c.x + cos(ang) * float(r) * 4.0
 			var z := c.y + sin(ang) * float(r) * 4.0
-			var hh: float = terrain.get_height(x, z)
-			if hh > -1.0:
-				return Vector3(x, hh + 2.0, z)
+			if _is_dry(x, z):
+				return Vector3(x, terrain.get_height(x, z) + 2.0, z)
 	return Vector3(c.x, 20.0, c.y)
+
+func _is_dry(x: float, z: float) -> bool:
+	var h: float = terrain.get_height(x, z)
+	if h < 0.0:
+		return false
+	if terrain.has_method("is_water") and terrain.is_water(x, z):
+		return false
+	return true

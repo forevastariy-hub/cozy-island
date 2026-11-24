@@ -407,8 +407,8 @@ func _lake_rim(center: Vector2, radii: Vector2, water_y: float, gap_dir: Vector2
 			if band <= 0.0:
 				continue
 			var ang := Vector2(wx - center.x, wz - center.y).angle()
-			var gap := 1.0 - smoothstep(0.18, 0.55, absf(angle_difference(ang, gap_angle)))
-			band *= 1.0 - gap * 0.95
+			var gap := 1.0 - smoothstep(0.07, 0.18, absf(angle_difference(ang, gap_angle)))
+			band *= 1.0 - gap
 			if band <= 0.0:
 				continue
 			var target := water_y + 1.3
