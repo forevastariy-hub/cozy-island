@@ -27,7 +27,7 @@ func build(points: Array, hf: HeightField, layout: PoiLayout, river: RiverBuilde
 			raw.append(_cell_world(id))
 		segments.append(_chaikin(_chaikin(raw)))
 		prev_cell = cell
-	_find_bridges(river)
+	_find_bridges(river, hf)
 	_ensure_crossings(river, hf)
 
 func _make_astar(hf: HeightField, layout: PoiLayout) -> AStarGrid2D:
@@ -98,7 +98,7 @@ func _chaikin(pts: PackedVector2Array) -> PackedVector2Array:
 	out.append(pts[pts.size() - 1])
 	return out
 
-func _find_bridges(river: RiverBuilder) -> void:
+func _find_bridges(river: RiverBuilder, hf: HeightField) -> void:
 	if river.polyline.size() < 2:
 		return
 	for seg in segments:
@@ -117,14 +117,11 @@ func _find_bridges(river: RiverBuilder) -> void:
 				if hit == null:
 					continue
 				var hp: Vector2 = hit
-				if _has_bridge_near(hp):
-					continue
 				var rdir := (d - c).normalized()
-				bridges.append({
-					"pos": Vector3(hp.x, river.water_level_at(hp), hp.y),
-					"dir": Vector3(rdir.x, 0.0, rdir.y),
-					"width": WorldConfig.ROAD.bridge_span,
-				})
+				var br := _bridge_at(hp, rdir, river, hf)
+				if br.is_empty():
+					continue
+				bridges.append(br)
 				if bridges.size() >= 3:
 					return
 
@@ -146,24 +143,42 @@ func _ensure_crossings(river: RiverBuilder, hf: HeightField) -> void:
 		var dir := (river.polyline[idx + 1] - river.polyline[idx - 1]).normalized()
 		if dir == Vector2.ZERO:
 			continue
-		var perp := Vector2(-dir.y, dir.x)
-		var a := p + perp * 28.0
-		var b := p - perp * 28.0
-		if hf.sample(a.x, a.y) < WorldConfig.SEA_LEVEL + 0.9:
+		var br := _bridge_at(p, dir, river, hf)
+		if br.is_empty():
 			continue
-		if hf.sample(b.x, b.y) < WorldConfig.SEA_LEVEL + 0.9:
-			continue
-		var wl := river.water_levels[idx]
-		if wl < WorldConfig.SEA_LEVEL + 0.8:
-			continue
-		if _has_bridge_near(p):
-			continue
-		segments.append(PackedVector2Array([a, p, b]))
-		bridges.append({
-			"pos": Vector3(p.x, wl, p.y),
-			"dir": Vector3(dir.x, 0.0, dir.y),
-			"width": WorldConfig.ROAD.bridge_span,
-		})
+		segments.append(PackedVector2Array([br["a"], p, br["b"]]))
+		bridges.append(br)
+
+func _bridge_at(p: Vector2, rdir: Vector2, river: RiverBuilder, hf: HeightField) -> Dictionary:
+	var wl := river.water_level_at(p)
+	if wl < WorldConfig.SEA_LEVEL + 0.6:
+		return {}
+	if _has_bridge_near(p):
+		return {}
+	var perp := Vector2(-rdir.y, rdir.x)
+	var half := 3.0
+	var ha := 0.0
+	var hb := 0.0
+	while half < 34.0:
+		var ta := p + perp * half
+		var tb := p - perp * half
+		ha = hf.sample(ta.x, ta.y)
+		hb = hf.sample(tb.x, tb.y)
+		if ha > wl + 0.6 and hb > wl + 0.6:
+			break
+		half += 1.5
+	if half >= 34.0:
+		return {}
+	var span := half * 2.0 + 2.0
+	var deck := maxf(ha, hb) + 0.25
+	return {
+		"pos": Vector3(p.x, deck, p.y),
+		"dir": Vector3(rdir.x, 0.0, rdir.y),
+		"width": span,
+		"water_y": wl,
+		"a": p + perp * half,
+		"b": p - perp * half,
+	}
 
 func flat_segments() -> Array:
 	var out := []

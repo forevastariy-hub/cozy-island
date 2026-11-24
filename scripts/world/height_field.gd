@@ -119,9 +119,10 @@ func lower_circle(center: Vector2, radius: float, target: float) -> void:
 			if goal < grid[zi * N + xi]:
 				grid[zi * N + xi] = goal
 
-func carve_stamp(center: Vector2, water: float, width: float, depth: float, bank: float) -> void:
+func carve_stamp(center: Vector2, water: float, width: float, depth: float, bank: float, valley: float) -> void:
 	var r_in := maxf(0.8, width * 0.5)
-	var r_out := r_in + bank
+	var r_bank := r_in + bank
+	var r_out := r_bank + valley
 	var j0 := clampi(int(floor((center.y - r_out + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var j1 := clampi(int(ceil((center.y + r_out + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var i0 := clampi(int(floor((center.x - r_out + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
@@ -134,19 +135,23 @@ func carve_stamp(center: Vector2, water: float, width: float, depth: float, bank
 			if d > r_out:
 				continue
 			var idx := zi * N + xi
-			var target := water
-			var mud_value := 0.0
 			if d <= r_in:
 				var t := 1.0 - d / r_in
-				target = water - depth * (0.35 + 0.65 * t)
-				mud_value = 1.0
+				var target := water - depth * (0.35 + 0.65 * t)
+				if target < grid[idx]:
+					grid[idx] = target
+				mud[idx] = maxf(mud[idx], 1.0)
+			elif d <= r_bank:
+				var b := (d - r_in) / maxf(0.001, bank)
+				var target := lerpf(water - 0.15, water + 0.8, b)
+				if target < grid[idx]:
+					grid[idx] = target
+				mud[idx] = maxf(mud[idx], (1.0 - b) * 0.8)
 			else:
-				var b := 1.0 - (d - r_in) / bank
-				target = lerpf(grid[idx], water, smoothstep(0.0, 1.0, b))
-				mud_value = b * 0.7
-			if target < grid[idx]:
-				grid[idx] = target
-			mud[idx] = maxf(mud[idx], mud_value)
+				var f := 1.0 - smoothstep(r_bank, r_out, d)
+				var goal := water + 0.8 + (d - r_bank) * 0.16
+				if goal < grid[idx]:
+					grid[idx] = lerpf(grid[idx], goal, f * 0.9)
 
 # --- POI sculpting --------------------------------------------------------
 
@@ -175,6 +180,8 @@ func apply_pois(layout: PoiLayout) -> void:
 
 func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, power: float) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.5
+	var size := radii * 2.0
+	var phase := ShapeUtil.phase_for(center)
 	var j0 := clampi(int(floor((center.y - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var j1 := clampi(int(ceil((center.y + rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var i0 := clampi(int(floor((center.x - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
@@ -183,9 +190,7 @@ func _flatten(center: Vector2, radii: Vector2, target: float, strength: float, p
 		var wz := -WorldConfig.SIZE * 0.5 + float(zi) * cell
 		for xi in range(i0, i1 + 1):
 			var wx := -WorldConfig.SIZE * 0.5 + float(xi) * cell
-			var nx := (wx - center.x) / maxf(1.0, radii.x)
-			var nz := (wz - center.y) / maxf(1.0, radii.y)
-			var d := sqrt(nx * nx + nz * nz)
+			var d := ShapeUtil.ellipse_norm(wx, wz, center, size, phase)
 			if d > 1.45:
 				continue
 			var f := 1.0 - smoothstep(0.45, 1.35, d)
@@ -224,6 +229,8 @@ func _terrace(t: float, steps: float) -> float:
 
 func _lake_basin(center: Vector2, radii: Vector2, water_y: float, depth: float) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.3
+	var size := radii * 2.0
+	var phase := ShapeUtil.phase_for(center)
 	var j0 := clampi(int(floor((center.y - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var j1 := clampi(int(ceil((center.y + rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var i0 := clampi(int(floor((center.x - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
@@ -232,9 +239,7 @@ func _lake_basin(center: Vector2, radii: Vector2, water_y: float, depth: float) 
 		var wz := -WorldConfig.SIZE * 0.5 + float(zi) * cell
 		for xi in range(i0, i1 + 1):
 			var wx := -WorldConfig.SIZE * 0.5 + float(xi) * cell
-			var nx := (wx - center.x) / maxf(1.0, radii.x)
-			var nz := (wz - center.y) / maxf(1.0, radii.y)
-			var rn := sqrt(nx * nx + nz * nz)
+			var rn := ShapeUtil.ellipse_norm(wx, wz, center, size, phase)
 			var infl := 1.0 - smoothstep(0.86, 1.24, rn)
 			if infl <= 0.0:
 				continue
@@ -244,6 +249,8 @@ func _lake_basin(center: Vector2, radii: Vector2, water_y: float, depth: float) 
 
 func _swamp_basin(center: Vector2, radii: Vector2) -> void:
 	var rmax := maxf(radii.x, radii.y) * 1.25
+	var size := radii * 2.0
+	var phase := ShapeUtil.phase_for(center)
 	var j0 := clampi(int(floor((center.y - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var j1 := clampi(int(ceil((center.y + rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
 	var i0 := clampi(int(floor((center.x - rmax + WorldConfig.SIZE * 0.5) / cell)), 0, N - 1)
@@ -252,9 +259,7 @@ func _swamp_basin(center: Vector2, radii: Vector2) -> void:
 		var wz := -WorldConfig.SIZE * 0.5 + float(zi) * cell
 		for xi in range(i0, i1 + 1):
 			var wx := -WorldConfig.SIZE * 0.5 + float(xi) * cell
-			var nx := (wx - center.x) / maxf(1.0, radii.x)
-			var nz := (wz - center.y) / maxf(1.0, radii.y)
-			var rn := sqrt(nx * nx + nz * nz)
+			var rn := ShapeUtil.ellipse_norm(wx, wz, center, size, phase)
 			var infl := 1.0 - smoothstep(0.72, 1.2, rn)
 			if infl <= 0.0:
 				continue

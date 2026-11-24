@@ -89,9 +89,10 @@ const POI := {
 const RIVER := {
 	"step": 14.0,
 	"sample": 3.0,
-	"width": 6.0,
-	"depth": 1.2,
-	"bank": 3.0,
+	"width": 9.0,
+	"depth": 1.4,
+	"bank": 4.0,
+	"valley": 15.0,
 	"waterfall_drop": 1.1,
 	"max_waterfalls": 3
 }

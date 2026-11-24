@@ -6,21 +6,31 @@ extends RefCounted
 
 var placements: Array = []
 
-func build(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, rng: WorldRng) -> void:
+func build(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng) -> void:
 	placements.clear()
-	_scatter_trees(hf, zones, painter, layout, rng, "pine", int(WorldConfig.SCATTER["pine"]), WorldConfig.ZONE_PINE_FOREST)
-	_scatter_trees(hf, zones, painter, layout, rng, "decid", int(WorldConfig.SCATTER["decid"]), WorldConfig.ZONE_DECIDUOUS_FOREST)
-	_scatter_rocks(hf, zones, painter, layout, rng, int(WorldConfig.SCATTER["rock"]))
-	_scatter_bushes(hf, zones, painter, layout, rng, int(WorldConfig.SCATTER["bush"]))
-	_scatter_reeds(hf, zones, painter, layout, rng, int(WorldConfig.SCATTER["reed"]))
+	_scatter_trees(hf, zones, painter, layout, river, rng, "pine", int(WorldConfig.SCATTER["pine"]), WorldConfig.ZONE_PINE_FOREST)
+	_scatter_trees(hf, zones, painter, layout, river, rng, "decid", int(WorldConfig.SCATTER["decid"]), WorldConfig.ZONE_DECIDUOUS_FOREST)
+	_scatter_rocks(hf, zones, painter, layout, river, rng, int(WorldConfig.SCATTER["rock"]))
+	_scatter_bushes(hf, zones, painter, layout, river, rng, int(WorldConfig.SCATTER["bush"]))
+	_scatter_reeds(hf, zones, painter, layout, river, rng, int(WorldConfig.SCATTER["reed"]))
 
-func _ctx(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, x: float, z: float) -> Dictionary:
+func _ctx(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, x: float, z: float) -> Dictionary:
 	var h := hf.sample(x, z)
 	var zdef := zones.zone_at(x, z)
 	var zt := int(zdef.get("type", WorldConfig.ZONE_GENERAL))
 	var water_y := WorldConfig.SEA_LEVEL
 	if zt == WorldConfig.ZONE_LAKE:
 		water_y = WorldConfig.LAKE_Y
+	var water := false
+	if h < WorldConfig.SEA_LEVEL + 0.25:
+		water = true
+	if not water and layout.pois.has("lake"):
+		var lp: Dictionary = layout.pois["lake"]
+		var lc: Vector2 = lp["center"]
+		if h < WorldConfig.LAKE_Y and ShapeUtil.ellipse_norm(x, z, lc, lp["size"], ShapeUtil.phase_for(lc)) < 1.0:
+			water = true
+	if not water and river.is_water_at(Vector2(x, z), h):
+		water = true
 	var dpoi := 9999.0
 	for name in layout.pois:
 		dpoi = minf(dpoi, Vector2(x, z).distance_to(layout.pois[name]["center"]))
@@ -31,23 +41,23 @@ func _ctx(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiL
 		"road": painter.path_at(x, z),
 		"dist_poi": dpoi,
 		"water_y": water_y,
+		"water": water,
 	}
 
-func _scatter_trees(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, rng: WorldRng, kind: String, count: int, zone_type: int) -> void:
+func _scatter_trees(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, kind: String, count: int, zone_type: int) -> void:
 	var def := zones.def_by_type(zone_type)
 	if def.is_empty():
 		return
 	var center: Vector2 = def["center"]
 	var radii: Vector2 = (def["size"] as Vector2) * 0.5
 	var placed := 0
-	var attempts := count * 10
-	for _i in range(attempts):
+	for _i in range(count * 10):
 		if placed >= count:
 			break
 		var p := rng.random_in_ellipse(center, radii, 0.92)
 		if zones.type_at(p.x, p.y) != zone_type:
 			continue
-		var ctx := _ctx(hf, zones, painter, layout, p.x, p.y)
+		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.tree_allowed(ctx):
 			continue
 		placements.append({
@@ -58,7 +68,7 @@ func _scatter_trees(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, la
 		})
 		placed += 1
 
-func _scatter_rocks(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, rng: WorldRng, count: int) -> void:
+func _scatter_rocks(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, count: int) -> void:
 	var placed := 0
 	for _i in range(count * 12):
 		if placed >= count:
@@ -66,7 +76,7 @@ func _scatter_rocks(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, la
 		var a := rng.randf_range(0.0, TAU)
 		var r := rng.randf_range(12.0, 470.0)
 		var p := Vector2(cos(a), sin(a)) * r
-		var ctx := _ctx(hf, zones, painter, layout, p.x, p.y)
+		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.rock_allowed(ctx):
 			continue
 		placements.append({
@@ -77,7 +87,7 @@ func _scatter_rocks(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, la
 		})
 		placed += 1
 
-func _scatter_bushes(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, rng: WorldRng, count: int) -> void:
+func _scatter_bushes(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, count: int) -> void:
 	var placed := 0
 	for _i in range(count * 12):
 		if placed >= count:
@@ -85,7 +95,7 @@ func _scatter_bushes(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, l
 		var a := rng.randf_range(0.0, TAU)
 		var r := rng.randf_range(30.0, 450.0)
 		var p := Vector2(cos(a), sin(a)) * r
-		var ctx := _ctx(hf, zones, painter, layout, p.x, p.y)
+		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.bush_allowed(ctx):
 			continue
 		placements.append({
@@ -96,7 +106,7 @@ func _scatter_bushes(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, l
 		})
 		placed += 1
 
-func _scatter_reeds(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, rng: WorldRng, count: int) -> void:
+func _scatter_reeds(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, layout: PoiLayout, river: RiverBuilder, rng: WorldRng, count: int) -> void:
 	var spots: Array = []
 	for zt in [WorldConfig.ZONE_SWAMP, WorldConfig.ZONE_LAKE]:
 		var def := zones.def_by_type(zt)
@@ -110,7 +120,7 @@ func _scatter_reeds(hf: HeightField, zones: ZoneMap, painter: TerrainPainter, la
 			break
 		var def: Dictionary = spots[rng.randi_range(0, spots.size() - 1)]
 		var p := rng.random_in_ellipse(def["center"], (def["size"] as Vector2) * 0.5, 1.05)
-		var ctx := _ctx(hf, zones, painter, layout, p.x, p.y)
+		var ctx := _ctx(hf, zones, painter, layout, river, p.x, p.y)
 		if not BiomeRules.reed_allowed(ctx):
 			continue
 		placements.append({

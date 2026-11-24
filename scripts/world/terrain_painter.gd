@@ -88,9 +88,8 @@ func _build_zone_grids(hf: HeightField, zones: ZoneMap) -> void:
 			if not swamp_def.is_empty():
 				var c: Vector2 = swamp_def["center"]
 				var sz: Vector2 = swamp_def["size"]
-				var nx := (x - c.x) / maxf(1.0, sz.x * 0.5)
-				var nz := (z - c.y) / maxf(1.0, sz.y * 0.5)
-				swamp = 1.0 - smoothstep(0.70, 1.15, sqrt(nx * nx + nz * nz))
+				var phase: float = swamp_def["phase"]
+				swamp = 1.0 - smoothstep(0.70, 1.15, ShapeUtil.ellipse_norm(x, z, c, sz, phase))
 			var rock := smoothstep(26.0, 40.0, slope)
 			rock = maxf(rock, smoothstep(22.0, 34.0, h))
 			var shore := 1.0 - smoothstep(0.0, 1.8, absf(h - (WorldConfig.SEA_LEVEL + 0.5)))

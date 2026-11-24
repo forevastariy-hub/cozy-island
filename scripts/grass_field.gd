@@ -36,6 +36,8 @@ func build(t: Node3D) -> void:
 		var h: float = terrain.get_height(x, z)
 		if h < WATER_LEVEL + 0.45:
 			continue
+		if terrain.has_method("is_water") and terrain.is_water(x, z):
+			continue
 		if 1.0 - terrain.get_normal(x, z).y > 0.42:
 			continue
 		var zone: Vector4 = terrain.get_zone(x, z)
@@ -57,6 +59,8 @@ func build(t: Node3D) -> void:
 			var bz := z + rng.randf_range(-tuft_spread, tuft_spread)
 			var bh: float = terrain.get_height(bx, bz)
 			if bh < WATER_LEVEL + 0.45:
+				continue
+			if terrain.has_method("is_water") and terrain.is_water(bx, bz):
 				continue
 			if 1.0 - terrain.get_normal(bx, bz).y > 0.48:
 				continue

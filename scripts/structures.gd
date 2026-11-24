@@ -523,6 +523,9 @@ func build_bridge(parent: Node3D, pos: Vector3, dir: Vector3, width: float) -> N
 		root.add_child(_box(Vector3(span, 0.08, 0.08), wood, Vector3(0.0, 0.62, side * 1.15)))
 		for xx in [-span * 0.42, 0.0, span * 0.42]:
 			root.add_child(_box(Vector3(0.07, 0.54, 0.07), wood, Vector3(xx, 0.35, side * 1.15)))
+	for side in [-1.0, 1.0]:
+		for xx in [-span * 0.42, span * 0.42]:
+			root.add_child(_box(Vector3(0.16, 3.4, 0.16), wood, Vector3(xx, -1.7, side * 0.95)))
 	var body := StaticBody3D.new()
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()

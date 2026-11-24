@@ -68,6 +68,9 @@ func get_zone_type(x: float, z: float) -> int:
 func get_minimap_texture(map_size: int = 320) -> ImageTexture:
 	return world.painter.minimap_texture(map_size)
 
+func is_water(x: float, z: float) -> bool:
+	return world.is_water(x, z)
+
 func build_paths(points: Array) -> void:
 	var pts: Array = []
 	for p in points:

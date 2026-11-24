@@ -28,7 +28,18 @@ func generate(seed_value: int, parent: Node3D) -> void:
 	painter.build(hf, zones, coast, roads)
 	mesh.build(parent, hf, painter)
 	water.build(parent, painter.mask_texture, layout, river)
-	scatter.build(hf, zones, painter, layout, WorldRng.new(seed_value, "scatter"))
+	scatter.build(hf, zones, painter, layout, river, WorldRng.new(seed_value, "scatter"))
+
+func is_water(x: float, z: float) -> bool:
+	var h := hf.sample(x, z)
+	if h < WorldConfig.SEA_LEVEL + 0.25:
+		return true
+	if layout.pois.has("lake"):
+		var lp: Dictionary = layout.pois["lake"]
+		var lc: Vector2 = lp["center"]
+		if h < WorldConfig.LAKE_Y and ShapeUtil.ellipse_norm(x, z, lc, lp["size"], ShapeUtil.phase_for(lc)) < 1.0:
+			return true
+	return river.is_water_at(Vector2(x, z), h)
 
 func route_points() -> Array:
 	var out: Array = []

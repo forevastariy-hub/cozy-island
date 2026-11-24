@@ -7,11 +7,14 @@ extends RefCounted
 var polyline := PackedVector2Array()
 var water_levels := PackedFloat32Array()
 var waterfalls: Array = []
+var bbox := Rect2()
+var _travel := 0.0
 
 func build(hf: HeightField, layout: PoiLayout, coast: Coastline, rng: WorldRng) -> void:
 	polyline = PackedVector2Array()
 	water_levels = PackedFloat32Array()
 	waterfalls.clear()
+	_travel = 0.0
 	if not layout.pois.has("lake") or not layout.pois.has("camp"):
 		return
 	var lake: Dictionary = layout.pois["lake"]
@@ -22,13 +25,17 @@ func build(hf: HeightField, layout: PoiLayout, coast: Coastline, rng: WorldRng) 
 	var start_dir := (camp_c - lake_c).normalized()
 	if start_dir == Vector2.ZERO:
 		start_dir = Vector2.RIGHT
-	var p := lake_c + start_dir * (lake_size.x * 0.5 + 8.0)
+	var rx := maxf(1.0, lake_size.x * 0.5)
+	var rz := maxf(1.0, lake_size.y * 0.5)
+	var shore_r := 1.0 / sqrt(pow(start_dir.x / rx, 2.0) + pow(start_dir.y / rz, 2.0))
+	var p := lake_c + start_dir * maxf(2.0, shore_r - 3.0)
 	var dir := start_dir
 	var raw := PackedVector2Array()
 	raw.append(p)
 	for _i in range(150):
 		dir = _choose_dir(p, dir, hf, layout, coast, rng)
 		p += dir * WorldConfig.RIVER.step
+		_travel += WorldConfig.RIVER.step
 		raw.append(p)
 		var h := hf.sample(p.x, p.y)
 		if h < WorldConfig.SEA_LEVEL + 0.3:
@@ -41,20 +48,38 @@ func build(hf: HeightField, layout: PoiLayout, coast: Coastline, rng: WorldRng) 
 			raw.append(raw[raw.size() - 1] + tail_dir * 12.0)
 	var smooth := _chaikin(raw)
 	_resample(smooth, WorldConfig.RIVER.sample)
+	_update_bbox()
 	_recompute_water(hf)
 	_carve(hf)
 	_detect_waterfalls(hf)
 
+func _update_bbox() -> void:
+	if polyline.is_empty():
+		bbox = Rect2()
+		return
+	var mn := polyline[0]
+	var mx := polyline[0]
+	for p in polyline:
+		mn = Vector2(minf(mn.x, p.x), minf(mn.y, p.y))
+		mx = Vector2(maxf(mx.x, p.x), maxf(mx.y, p.y))
+	bbox = Rect2(mn, mx - mn)
+
 func _choose_dir(p: Vector2, prev_dir: Vector2, hf: HeightField, layout: PoiLayout, coast: Coastline, rng: WorldRng) -> Vector2:
 	var best := prev_dir
 	var best_score := 1.0e18
-	var avoid := ["camp", "fields", "ruins", "stone_tower", "mountain", "radio_tower", "lake"]
+	var avoid := ["camp", "fields", "ruins", "stone_tower", "mountain", "radio_tower"]
+	var lake: Dictionary = layout.pois.get("lake", {})
 	for i in range(16):
 		var a := TAU * float(i) / 16.0 + rng.randf_range(-0.05, 0.05)
 		var cand := Vector2(cos(a), sin(a))
 		var np := p + cand * WorldConfig.RIVER.step
 		var score := hf.sample(np.x, np.y)
-		score += absf(angle_difference(cand.angle(), prev_dir.angle())) * 7.0
+		var desired := prev_dir.angle() + sin(_travel * 0.03) * 0.28
+		score += absf(angle_difference(cand.angle(), desired)) * 5.0
+		if not lake.is_empty():
+			var lc: Vector2 = lake["center"]
+			if ShapeUtil.ellipse_norm(np.x, np.y, lc, lake["size"], ShapeUtil.phase_for(lc)) < 1.08:
+				score += 800.0
 		for key in avoid:
 			if not layout.pois.has(key):
 				continue
@@ -107,7 +132,7 @@ func _recompute_water(hf: HeightField) -> void:
 	for i in range(polyline.size()):
 		var p := polyline[i]
 		var h := hf.sample(p.x, p.y)
-		wl = minf(wl - 0.02, h - 0.30)
+		wl = minf(wl - 0.02, h - 0.18)
 		water_levels[i] = maxf(wl, WorldConfig.SEA_LEVEL - 0.6)
 
 func _carve(hf: HeightField) -> void:
@@ -117,7 +142,8 @@ func _carve(hf: HeightField) -> void:
 			water_levels[i],
 			WorldConfig.RIVER.width,
 			WorldConfig.RIVER.depth,
-			WorldConfig.RIVER.bank
+			WorldConfig.RIVER.bank,
+			WorldConfig.RIVER.valley
 		)
 
 func _detect_waterfalls(hf: HeightField) -> void:
@@ -149,3 +175,20 @@ func water_level_at(p: Vector2) -> float:
 			best_d = d
 			best = i
 	return water_levels[best] if best < water_levels.size() else WorldConfig.SEA_LEVEL
+
+func is_water_at(p: Vector2, h: float) -> bool:
+	if polyline.size() < 2 or bbox.size == Vector2.ZERO:
+		return false
+	if not bbox.grow(4.0).has_point(p):
+		return false
+	var best := 1.0e18
+	var best_i := 0
+	for i in range(polyline.size()):
+		var d := p.distance_squared_to(polyline[i])
+		if d < best:
+			best = d
+			best_i = i
+	var limit := WorldConfig.RIVER.width * 0.5 + 1.5
+	if best > limit * limit:
+		return false
+	return h < water_levels[best_i] + 0.4

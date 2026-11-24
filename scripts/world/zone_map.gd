@@ -22,23 +22,24 @@ func build(layout: PoiLayout) -> void:
 	zones.clear()
 	for name in layout.pois:
 		var p: Dictionary = layout.pois[name]
+		var c: Vector2 = p["center"]
 		zones.append({
 			"name": String(name),
-			"center": p["center"],
+			"center": c,
 			"size": p["size"],
 			"type": int(p["type"]),
 			"priority": int(_priority.get(int(p["type"]), 0)),
+			"phase": ShapeUtil.phase_for(c),
 		})
 
 func zone_at(x: float, z: float) -> Dictionary:
 	var best := {}
 	var best_priority := -1
 	for zdef in zones:
-		var sz: Vector2 = zdef["size"]
 		var c: Vector2 = zdef["center"]
-		var nx := (x - c.x) / maxf(1.0, sz.x * 0.5)
-		var nz := (z - c.y) / maxf(1.0, sz.y * 0.5)
-		if nx * nx + nz * nz > 1.0:
+		var sz: Vector2 = zdef["size"]
+		var phase: float = zdef["phase"]
+		if ShapeUtil.ellipse_norm(x, z, c, sz, phase) > 1.0:
 			continue
 		if int(zdef["priority"]) > best_priority:
 			best_priority = int(zdef["priority"])

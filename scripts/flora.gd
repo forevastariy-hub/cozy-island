@@ -39,6 +39,8 @@ func scatter(rng: RandomNumberGenerator, count: int, min_h: float, max_h: float,
 		var h: float = terrain.get_height(x, z)
 		if h < min_h or h > max_h:
 			continue
+		if terrain.has_method("is_water") and terrain.is_water(x, z):
+			continue
 		if 1.0 - terrain.get_normal(x, z).y > 0.42:
 			continue
 		var zone: Vector4 = terrain.get_zone(x, z)

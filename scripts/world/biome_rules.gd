@@ -7,6 +7,8 @@ static func is_cliff(slope_deg: float) -> bool:
 	return slope_deg > 42.0
 
 static func tree_allowed(ctx: Dictionary) -> bool:
+	if bool(ctx.get("water", false)):
+		return false
 	if float(ctx["height"]) < WorldConfig.SEA_LEVEL + 2.5:
 		return false
 	if float(ctx["slope_deg"]) > 28.0:
@@ -25,6 +27,8 @@ static func tree_allowed(ctx: Dictionary) -> bool:
 	return true
 
 static func bush_allowed(ctx: Dictionary) -> bool:
+	if bool(ctx.get("water", false)):
+		return false
 	if float(ctx["height"]) < WorldConfig.SEA_LEVEL + 1.5:
 		return false
 	if float(ctx["slope_deg"]) > 30.0:
@@ -37,6 +41,8 @@ static func bush_allowed(ctx: Dictionary) -> bool:
 	return t != WorldConfig.ZONE_LAKE and t != WorldConfig.ZONE_SWAMP
 
 static func rock_allowed(ctx: Dictionary) -> bool:
+	if bool(ctx.get("water", false)):
+		return false
 	if float(ctx["height"]) < WorldConfig.SEA_LEVEL - 0.5:
 		return false
 	if float(ctx["slope_deg"]) > 48.0:
@@ -48,9 +54,11 @@ static func rock_allowed(ctx: Dictionary) -> bool:
 	return true
 
 static func reed_allowed(ctx: Dictionary) -> bool:
-	if absf(float(ctx["height"]) - float(ctx["water_y"])) > 0.9:
+	if float(ctx["height"]) < float(ctx["water_y"]) - 0.55:
+		return false
+	if absf(float(ctx["height"]) - float(ctx["water_y"])) > 1.2:
 		return false
 	if float(ctx["slope_deg"]) > 30.0:
 		return false
 	var t := int(ctx["zone_type"])
-	return t == WorldConfig.ZONE_SWAMP or t == WorldConfig.ZONE_LAKE
+	return t == WorldConfig.ZONE_SWAMP or t == WorldConfig.ZONE_LAKE or bool(ctx.get("water", false))
